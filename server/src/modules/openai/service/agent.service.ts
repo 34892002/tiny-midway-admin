@@ -5,7 +5,7 @@ import { HistoryService } from '../../wechat/service/history.service';
 import { GeweService } from '../../wechat/service/gewe.service';
 
 import { createToolCallingAgent, AgentExecutor } from "langchain/agents";
-import { createReactAgent } from "@langchain/langgraph/prebuilt";
+// import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { tool } from "@langchain/core/tools";
 
@@ -125,114 +125,59 @@ export class AgentService {
     }
   }
 
-  // 微信群助手
-  async wxGroupAgent(options: SearchParam) {
-    try {
-      const { llm, input, groupId, sender, aiBot } = options;
-      // 封装工具
-      const groupHistory = await this.createRagSearchGroupTool(groupId, aiBot.emModelId);
-      const groupMember = await this.createMemberTool(options.appId);
-      const tools = [groupMember, groupHistory];
-      // 创建代理方法
-      const prompt = ChatPromptTemplate.fromMessages([
-        [
-          'system', `
-          - 你是一个乐于助人的助手，你处在一个聊天群组内部。
-          - 如果现有条件下你能回答群成员问题，请直接回答。如果你需要额外信息可以调用合适的工具。
-          - 如果无法确定答案，请坦承不知。
-          - **重要:** human 看不到 ID 信息，输入的查询条件必定是昵称、群名称等可见信息，需要先调用工具查询对应 ID。
-          - **工具调用顺序:**
-            1. 如果查询条件是昵称，先调用 'getGroupAndMemberInfo' 工具获取成员 ID。
-            2. 然后使用获取到的成员 ID 调用 'searchChatHistory' 工具查询聊天记录。
-          - 问题背景信息：当前时间：${new Date().toLocaleString()}，提问人的群成员ID: ${sender}，提问人所在聊天群ID:${groupId}。
-          - 请使用中文回答，除非成员要求使用其它语言。
-          - 如果某工具返回结果为没有实际意义(比如空字符串、空对象、空数组)就是没有数据，禁止再次使用相同参数调用工具。
-          - 如果某工具返回结果不符合预期可能是数据有误，禁止再次使用相同参数调用工具。
-          - 不要使用任何 markdown 格式，可以使用纯交本格式或者emoji。
-          `
-        ],
-        ['placeholder', '{chat_history}'],
-        ['human', '{input}'],
-        ['placeholder', '{agent_scratchpad}'],
-      ]);
-
-      const agent = createToolCallingAgent({ llm, tools, prompt });
-      const agentExecutor = new AgentExecutor({
-        agent,
-        tools,
-        verbose: false,
-        handleParsingErrors: 'Please try again, paying close attention to the allowed enum values',
-        returnIntermediateSteps: true
-      });
-
-      const response = await agentExecutor.invoke({ input });
-      console.log('@agent调试: wxGroupAgent: ', response);
-      let res = response.output || '没有结果输出';
-      console.log('res: ', typeof res, res);
-      if (typeof res === 'string') {
-        return { content: res };
-      } else {
-        return { content: JSON.stringify(res) };
-      }
-    } catch (error) {
-      console.error('@agent error: ', error);
-      return error;
-    }
-  }
-
   // 思考上下文消耗更多的token
-  async wxGroupReactAgent(options: SearchParam) {
-    try {
-      const { llm, input, groupId, sender, aiBot } = options;
-      // 封装工具
-      const groupHistory = await this.createRagSearchGroupTool(groupId, aiBot.emModelId);
-      const groupMember = await this.createMemberTool(options.appId);
-      const tools = [groupMember, groupHistory];
-
-      // 创建react代理
-      const agent = createReactAgent({ llm, tools });
-      const inputs = {
-        messages: [
-          { role: "system", content: `
-            - 你是一个乐于助人的助手，你处在一个聊天群组内部。
-            - 如果现有条件下你能回答群成员问题，请直接回答。如果你需要额外信息可以调用合适的工具。
-            - 如果无法确定答案，请坦承不知。
-            - **重要:** human 看不到 ID 信息，输入的查询条件必定是昵称、群名称等可见信息，需要先调用工具查询对应 ID。
-            - **工具调用顺序:**
-              1. 如果查询条件是昵称，先调用 'getGroupAndMemberInfo' 工具获取成员 ID。
-              2. 然后使用获取到的成员 ID 调用 'searchChatHistory' 工具查询聊天记录。
-            - 问题背景信息：当前时间：${new Date().toLocaleString()}，提问人的群成员ID: ${sender}，提问人所在聊天群ID:${groupId}。
-            - 请使用中文回答，除非成员要求使用其它语言。
-            - 如果某工具返回结果为没有实际意义(比如空字符串、空对象、空数组)就是没有数据，禁止再次使用相同参数调用工具。
-            - 如果某工具返回结果不符合预期可能是数据有误，禁止再次使用相同参数调用工具。
-            - 不要使用任何 markdown 格式，可以使用纯交本格式或者emoji。
-          `
-          },
-          { role: "user", content: input }
-        ],
-      };
-
-      const response = await agent.invoke({ ...inputs });
-
-      console.log('@agent调试: wxGroupAgent: ', response);
-      const messages = response?.messages || [];
-      const responseArr = [];
-      for (const AIMessage of messages) {
-        responseArr.push(AIMessage.content);
-      }
-      let res = responseArr[responseArr.length - 1];
-      // let res = AIMessage.content;
-      // 返回的消息转成string类型
-      if (typeof res === 'string') {
-        return res;
-      } else {
-        return JSON.stringify(res);
-      }
-    } catch (error) {
-      console.error('@agent error: ', error);
-      return error;
-    }
-  }
+  // async wxGroupReactAgent(options: SearchParam) {
+  //   try {
+  //     const { llm, input, groupId, sender, aiBot } = options;
+  //     // 封装工具
+  //     const groupHistory = await this.createRagSearchGroupTool(groupId, aiBot.emModelId);
+  //     const groupMember = await this.createMemberTool(options.appId);
+  //     const tools = [groupMember, groupHistory];
+  //
+  //     // 创建react代理
+  //     const agent = createReactAgent({ llm, tools });
+  //     const inputs = {
+  //       messages: [
+  //         { role: "system", content: `
+  //           - 你是一个乐于助人的助手，你处在一个聊天群组内部。
+  //           - 如果现有条件下你能回答群成员问题，请直接回答。如果你需要额外信息可以调用合适的工具。
+  //           - 如果无法确定答案，请坦承不知。
+  //           - **重要:** human 看不到 ID 信息，输入的查询条件必定是昵称、群名称等可见信息，需要先调用工具查询对应 ID。
+  //           - **工具调用顺序:**
+  //             1. 如果查询条件是昵称，先调用 'getGroupAndMemberInfo' 工具获取成员 ID。
+  //             2. 然后使用获取到的成员 ID 调用 'searchChatHistory' 工具查询聊天记录。
+  //           - 问题背景信息：当前时间：${new Date().toLocaleString()}，提问人的群成员ID: ${sender}，提问人所在聊天群ID:${groupId}。
+  //           - 请使用中文回答，除非成员要求使用其它语言。
+  //           - 如果某工具返回结果为没有实际意义(比如空字符串、空对象、空数组)就是没有数据，禁止再次使用相同参数调用工具。
+  //           - 如果某工具返回结果不符合预期可能是数据有误，禁止再次使用相同参数调用工具。
+  //           - 不要使用任何 markdown 格式，可以使用纯交本格式或者emoji。
+  //         `
+  //         },
+  //         { role: "user", content: input }
+  //       ],
+  //     };
+  //
+  //     const response = await agent.invoke({ ...inputs });
+  //
+  //     console.log('@agent调试: wxGroupAgent: ', response);
+  //     const messages = response?.messages || [];
+  //     const responseArr = [];
+  //     for (const AIMessage of messages) {
+  //       responseArr.push(AIMessage.content);
+  //     }
+  //     let res = responseArr[responseArr.length - 1];
+  //     // let res = AIMessage.content;
+  //     // 返回的消息转成string类型
+  //     if (typeof res === 'string') {
+  //       return res;
+  //     } else {
+  //       return JSON.stringify(res);
+  //     }
+  //   } catch (error) {
+  //     console.error('@agent error: ', error);
+  //     return error;
+  //   }
+  // }
 
   // 群搜索工具
   async createRagSearchGroupTool(groupId: string, emModelId: number) {

@@ -1,13 +1,14 @@
 import { Provide, Inject } from '@midwayjs/core';
 import { GeweService } from './gewe.service';
 import { AIModelService } from '../../openai/service/models.service';
-import { AgentService } from '../../openai/service/agent.server';
+import { AgentService } from '../../openai/service/agent.service';
+import { ChatService } from '../../openai/service/chat.service';
 import { QueueService } from '../../base/service/queue.service';
 
 import { Message } from '../class/message.class';
 
 import { PrismaClient } from '@prisma/client';
-import { HumanMessage, SystemMessage } from '@langchain/core/messages';
+// import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import * as _ from 'lodash';
 
 type OmitPrismaClient = Omit<PrismaClient, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">
@@ -22,6 +23,8 @@ export class WxMessageService {
   aIModelService: AIModelService;
   @Inject()
   AgentService: AgentService;
+  @Inject()
+  chatService: ChatService;
   @Inject()
   queueService: QueueService;
 
@@ -55,7 +58,7 @@ export class WxMessageService {
       if (testPrefix && testNext) {
         const llm = await this.aIModelService.getOpenAIModel(aiBot.modelId);
         const input = text.slice(prefix ? prefix.length : 0);
-        const messages = [new SystemMessage(aiBot?.prompt || ''), new HumanMessage(input)];
+        // const messages = [new SystemMessage(aiBot?.prompt || ''), new HumanMessage(input)];
         // 群聊信息发送人wxid
         const [sender] = msg._text.split(':');
         const searchParam = {
@@ -68,7 +71,7 @@ export class WxMessageService {
         };
         const res = aiBot.useAgent
           ? await this.AgentService.wxAgent(searchParam)
-          : await llm.invoke(messages);
+          : await this.chatService.wxPrivate(input, llm, msg, aiBot);
         return this.sendMsg(msg.appid, msg.fromId, res.content.toString());
       }
     } else if (!msg._self) {
@@ -79,7 +82,7 @@ export class WxMessageService {
       if (testPrefix && testNext) {
         const chat = await this.aIModelService.getOpenAIModel(aiBot.modelId);
         const input = text.slice(prefix ? prefix.length : 0);
-        const messages = [new SystemMessage(aiBot?.prompt || ''), new HumanMessage(input)];
+        // const messages = [new SystemMessage(aiBot?.prompt || ''), new HumanMessage(input)];
         const searchParam = {
           appId: msg.appid,
           llm: chat,
@@ -90,7 +93,7 @@ export class WxMessageService {
         };
         const res = aiBot.useAgent
           ? await this.AgentService.wxAgent(searchParam)
-          : await chat.invoke(messages);
+          : await this.chatService.wxPrivate(input, chat, msg, aiBot);
         return this.sendMsg(msg.appid, msg.fromId, res.content.toString());
       }
     }
@@ -186,8 +189,7 @@ export class WxMessageService {
       `;
     // 使用参数化查询避免 SQL 注入
     const res = await this.prisma.$executeRawUnsafe(query, embeddingArr, id);
-    const success = res > 0;
-    return success;
+    return res > 0;
   }
 
   async addContactsIfMiss(appId: string, ids: string[], prisma: OmitPrismaClient, groupId: string = '') {
