@@ -5,6 +5,13 @@
 ## 部分功能
 开发板，还未稳定，谢谢关注!
 
+<img src="./img/1111.png" alt="Alt Text">
+<img src="./img/2222.png" alt="Alt Text">
+<img src="./img/3333.png" alt="Alt Text">
+<img src="./img/4444.png" alt="Alt Text">
+<img src="./img/5555.png" alt="Alt Text">
+<img src="./img/6666.png" alt="Alt Text">
+
 ## 快速入门
 运行环境：docker、nodejs
 本项目总运行总共需要三个部分： Tiny、Gewechat、PostgreSQL，Tiny提供admin管理界面，接入微信的功能依靠[Gewechat](https://github.com/Devo919/Gewechat)实现，PostgreSQL用于存储向量化数据。
@@ -73,11 +80,6 @@ npm run dev
 > 访问web界面
 http://localhost:3200/
 
-## 学习互助群
-开发版，还未稳定，谢谢关注!
-
-说明：目前项目还不稳定，测试（踩坑）为主，我会尽快修复，Peace and love.
-<img src="" alt="Alt Text" width="300" height="200">
 
 ## 鸣谢
 - 感谢Gewechat，功能依赖[Gewechat](https://github.com/Devo919/Gewechat)
