@@ -1,0 +1,9 @@
+// tsconfig.build.json
+{
+  "extends": "./tsconfig.json", // 继承主配置
+  "compilerOptions": {
+    // 将 rootDir 移入此对象
+    "rootDir": "src" // 生产构建仅编译 src 目录
+  },
+  "exclude": ["*.js", "dist", "node_modules", "test", "prisma"] // 排除测试/种子文件
+}
