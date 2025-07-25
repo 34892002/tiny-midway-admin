@@ -32,5 +32,5 @@ $ npm start
 ### 单元测试
 
 ```bash
-npm test -- --testPathPattern=guard --run  
+npm test -- --testPathPattern=base --run  
 ```
