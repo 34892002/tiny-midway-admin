@@ -10,19 +10,19 @@ describe('test/controller/api.test.ts', () => {
     // First get a captcha
     const captchaResult = await createHttpRequest(app).get('/auth/captcha');
     expect(captchaResult.status).toBe(200);
-    expect(captchaResult.body).toHaveProperty('id');
-    expect(captchaResult.body).toHaveProperty('imageBase64');
+    expect(captchaResult.body.data).toHaveProperty('id');
+    expect(captchaResult.body.data).toHaveProperty('imageBase64');
 
-    const captchaId = captchaResult.body.id;
+    const captchaId = captchaResult.body.data.id;
 
     // Now try to login
     const loginResult = await createHttpRequest(app)
       .post('/auth/login')
       .send({
-        username: 'a',
-        password: '1',
+        username: 'admin',
+        password: '666',
         captchaId: captchaId,
-        captcha: '1234', // Using a dummy value since we're in test mode
+        captcha: '0000', // Using a dummy value since we're in test mode
         isRemember: false
       });
 
