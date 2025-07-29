@@ -10,7 +10,7 @@ import { JwtPassportMiddleware } from '../../../middleware/jwt.middleware';
   { middleware: [JwtPassportMiddleware], description: 'CRUD例子' },
   {
     apis: ['list', 'page', 'info', 'create', 'update', 'delete'],
-    access: ['CrudDemo', 'CrudDemo', 'CrudDemo', 'CrudDemo', 'CrudDemo', 'CrudDemo'],
+    access: ['DataDict', 'DataDict', 'DataDict', 'DataDict', 'DataDict', 'DataDict'],
     guard: CasbinGuard
   }
 )
