@@ -32,7 +32,7 @@ export class AuthController {
       login.captchaId,
       login.captcha
     );
-    const isDemo = process.env.RUN_DEMO === 'true';
+    const isDemo = process.env.RUN_DEMO === 'true' || process.env.NODE_ENV === 'unittest';
     if (!capPassed && !isDemo) {
       // 业务逻辑的错误，不用抛出框架错误，
       // throw new WEBError();
