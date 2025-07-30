@@ -27,7 +27,7 @@ const main = async () => {
       data: {
         username: 'root',
         nickName: '超级管理员',
-        system: true,
+        system: true, // 系统内置管理员，不可删除
         password: '$2b$10$dWS9VrIbCuXhn2faiukhWeXSyD0vS6Fn62GCxq8HHHrt0sOGKguzq',
       },
     });
