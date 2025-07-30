@@ -117,7 +117,7 @@ export class UserService {
       await this.prisma.$transaction(async client => {
         await client.user.upsert({ where: { id }, update, create });
         // 同步该用户的所有角色
-        await this.casbinService.syncAdminDBRules('g', name, curRoles, '', client);
+        await this.casbinService.syncAdminDBRulesIncremental('g', name, curRoles, '', client);
       });
     } catch (error) {
       throw error;

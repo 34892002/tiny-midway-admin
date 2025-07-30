@@ -51,7 +51,7 @@ export class RoleController {
   @Access('RoleMgt')
   @Post('/')
   async addUser(@Body() dto: any) {
-    return this.roleService.updateOne(-1, dto);
+    return this.roleService.createOne(dto);
   }
   // 删除角色
   @Access('RoleMgt')

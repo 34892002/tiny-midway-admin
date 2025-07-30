@@ -44,6 +44,7 @@ export class RoleService {
       if (roleList.includes(item)) throw new MidwayError('权限标识不能跟角色标识重复', '5002');
     });
   }
+
   public async findAll(where:any, options: Partial<Options>): Promise<{ records: any[]; total: number; currentPage: number; pageSize: number }> {
     const { select, include, sort = { id: 'desc' }, page = 1, limit = 20 } = options;
     const orderBy = typeof sort === 'string' ? JSON.parse(sort) : sort;
@@ -61,23 +62,46 @@ export class RoleService {
     });
     return { records: rows, total: count, currentPage: page, pageSize: limit };
   }
-  async updateOne(id: number, _data: any) {
-    const role = await this.prisma.role.findUnique({ where: { id } });
-    if (role) {
-      // 系统内置账号不能修改系统属性
-      if (_data.system !== role.system) throw new MidwayError('用户不能修改系统属性', '5002');
-    }
+  
+  async createOne(_data: any) {
     const curPolicys = _data.policys;
     const code = _data.code;
     await this.checkCodeAndPolicys(code, curPolicys);
     const create = _.pick(_data, ['name', 'code']);
-    // code唯一且不会被修改
+    try {
+      await this.prisma.$transaction(async client => {
+        await client.role.create({ data: create });
+        // 同步该角色的所有权限
+        await this.casbinService.syncAdminDBRulesIncremental('p', code, curPolicys, 'access', client);
+      });
+    } catch (error) {
+      throw error;
+    } finally {
+      await this.reload();
+    }
+
+    return true;
+  }
+
+  async updateOne(id: number, _data: any) {
+    const role = await this.prisma.role.findUnique({ where: { id } });
+    if (!role) {
+      throw new MidwayError('角色不存在', '5002');
+    }
+    // 系统内置账号不能修改系统属性
+    if (_data.system !== role.system) throw new MidwayError('用户不能修改系统属性', '5002');
+    
+    const curPolicys = _data.policys;
+    const code = role.code; // 使用现有的code，不允许修改
+    await this.checkCodeAndPolicys(code, curPolicys);
+    
+    // code唯一且不会被修改，所以update中排除code
     const update = _.omit(_data, ['code', 'policys']);
     try {
       await this.prisma.$transaction(async client => {
-        await client.role.upsert({ where: { id }, update, create });
-        // 同步该用户的所有角色
-        await this.casbinService.syncAdminDBRules('p', code, curPolicys, 'access', client);
+        await client.role.update({ where: { id }, data: update });
+        // 同步该角色的所有权限
+        await this.casbinService.syncAdminDBRulesIncremental('p', code, curPolicys, 'access', client);
       });
     } catch (error) {
       throw error;
