@@ -23,6 +23,13 @@ export class ResourceController {
   }
 
   @Access('ResourceMgt')
+  @Get('/routers')
+  async getAllRouters() {
+    // 获取所有路由
+    return await this.resourceService.getAllRouters();
+  }
+
+  @Access('ResourceMgt')
   @Post('/')
   async createMenu(@Body() data: any) {
     // 没有order默认给0
