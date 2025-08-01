@@ -3,13 +3,24 @@ import { PrismaClient, Prisma } from '@prisma/client';
 const prisma = new PrismaClient();
 const main = async () => {
   console.log('Start seeding ...');
+  // 超级管理员，root最高权限，用于系统维护
   const ADMIN_ROLE_NAME = 'admin_role';
+  // 管理员权限，用于交付
+  const BUSINESS_ROLE_NAME = 'business_role';
+  // 来宾，最小权限
   const GUEST_ROLE_NAME = 'guest_role';
-  // 创建内置的超级管理员角色
+  // 创建系统内置角色，不可删除
   await prisma.role.create({
     data: {
-      name: '系统管理员',
+      name: '超级管理员',
       code: ADMIN_ROLE_NAME,
+      system: true,
+    },
+  });
+  await prisma.role.create({
+    data: {
+      name: '管理员',
+      code: BUSINESS_ROLE_NAME,
       system: true,
     },
   });
@@ -50,7 +61,7 @@ const main = async () => {
       data: {
         ptype: 'g',
         v0: 'admin',
-        v1: ADMIN_ROLE_NAME,
+        v1: BUSINESS_ROLE_NAME,
       },
     });
   })
@@ -551,7 +562,7 @@ const main = async () => {
   for (const code of accessCodes) {
     await insertCasbinRule({
       ptype: 'p',
-      v0: ADMIN_ROLE_NAME,
+      v0: BUSINESS_ROLE_NAME,
       v1: code,
       v2: 'access',
       v3: null,
