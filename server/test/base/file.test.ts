@@ -362,6 +362,100 @@ describe('File Module Error Coverage Tests', () => {
     });
 
     /**
+     * 测试文件上传到不存在的目录 - 测试目录创建逻辑
+     */
+    it('should create directory when uploading to non-existent path', async () => {
+        const http = createHttpRequest(app);
+        const path = require('path');
+        const fs = require('fs');
+        const testImagePath = path.join(__dirname, 'upload.jpg');
+        
+        // Mock existsSync 返回 false 来模拟目录不存在的情况
+        const originalExistsSync = fs.existsSync;
+        const originalMkdirSync = fs.mkdirSync;
+        let mkdirCalled = false;
+        
+        jest.spyOn(fs, 'existsSync').mockImplementation((path: string) => {
+            if (path.includes('download')) {
+                return false; // 模拟目录不存在
+            }
+            return originalExistsSync(path);
+        });
+        
+        jest.spyOn(fs, 'mkdirSync').mockImplementation((path: any, options: any) => {
+            mkdirCalled = true;
+            return originalMkdirSync(path, options);
+        });
+
+        const result = await http
+            .post('/base/file/upload')
+            .set('Authorization', `Bearer ${adminToken}`)
+            .field('categoryId', '1')
+            .attach('file', testImagePath);
+
+        expect(result.status).toBe(200);
+        expect(mkdirCalled).toBe(true); // 验证目录创建被调用
+        
+        // 恢复原始方法
+        fs.existsSync.mockRestore();
+        fs.mkdirSync.mockRestore();
+        
+        // 清理：删除上传的文件
+        if (result.body.data?.[0]?.id) {
+            await fileService.delFile([result.body.data[0].id]);
+        }
+    });
+
+    // 注意：流错误测试已移除，因为在测试环境中模拟文件流错误
+    // 会导致连接问题。实际的流错误处理逻辑在 FileController 中
+    // 通过 stream.on('error', (err) => { reject(err); }) 实现
+
+    /**
+     * 测试文件上传时数据库创建失败的错误处理和文件清理
+     * 使用简化的mock方式测试错误处理逻辑
+     */
+    it('should handle database error during file upload and cleanup file', async () => {
+        const http = createHttpRequest(app);
+        const path = require('path');
+        const testImagePath = path.join(__dirname, 'upload.jpg');
+
+        // 直接模拟底层的Prisma create方法
+        const dbError = new Error('Database connection failed');
+        (dbError as any).status = 500;
+        const mockPrismaCreate = jest.spyOn(fileService.prisma.file, 'create')
+            .mockRejectedValue(dbError);
+        
+        // 确保模拟被正确设置
+
+        // Mock文件删除来验证清理逻辑
+        const mockUnlink = jest.spyOn(fs, 'unlink')
+            .mockImplementation((path: any, callback: any) => {
+                callback(); // 立即调用回调表示删除成功
+            });
+
+        try {
+            const result = await http
+                .post('/base/file/upload')
+                .set('Authorization', `Bearer ${adminToken}`)
+                .field('categoryId', '1')
+                .attach('file', testImagePath);
+
+            // 验证模拟被调用
+            expect(mockPrismaCreate).toHaveBeenCalled();
+            
+            // 验证错误被正确处理
+            expect(result.status).toBe(500);
+            expect(result.body.message).toContain('Database connection failed');
+            
+            // 验证文件清理函数被调用
+            expect(mockUnlink).toHaveBeenCalled();
+        } finally {
+            mockPrismaCreate.mockRestore();
+            mockUnlink.mockRestore();
+        }
+    });
+
+    /**
      * 测试FileService.findAll方法 - 数据库错误
      */
     it('should handle database error in findAll', async () => {
@@ -429,6 +523,22 @@ describe('File Module Error Coverage Tests', () => {
             await fileService.addType('Test Type');
         } catch (error) {
             expect(error.message).toBe('已存在的分类名称');
+        }
+
+        mockCreate.mockRestore();
+    });
+
+    /**
+     * 测试FileService.addType方法 - 其他数据库错误
+     */
+    it('should handle other database errors in addType', async () => {
+        const mockCreate = jest.spyOn(fileService.prisma.fileCategory, 'create')
+            .mockRejectedValue(new Error('Unknown database error'));
+
+        try {
+            await fileService.addType('Test Type');
+        } catch (error) {
+            expect(error.message).toBe('Unknown database error');
         }
 
         mockCreate.mockRestore();

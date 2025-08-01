@@ -4,6 +4,145 @@ import { UserService } from '../../src/modules/base/service/user.service';
 import * as crypto from 'crypto';
 import * as bcrypt from 'bcrypt';
 
+// 菜单树模板
+interface MockMenuTemplate {
+  id: number;
+  code: string;
+  name: string;
+  enable: boolean;
+  type: string;
+  parentId: number;
+  path: string;
+  redirect: string;
+  icon: string;
+  component: string;
+  keepAlive: boolean;
+  show: boolean;
+  showTab: boolean;
+  authCode: string;
+  order: number;
+  layout: string;
+  method: string;
+  description: string;
+  createTime: Date;
+  updateTime: Date;
+  children?: MockMenuTemplate[];
+}
+
+/**
+ * 创建标准菜单项的辅助函数
+ */
+function createMockMenuItem(options: Partial<MockMenuTemplate>): MockMenuTemplate {
+  return {
+    id: options.id || 1,
+    code: options.code || 'default_menu',
+    name: options.name || 'Default Menu',
+    enable: options.enable ?? true,
+    type: options.type || 'menu',
+    parentId: options.parentId ?? 0,
+    path: options.path || '/default',
+    redirect: options.redirect ?? '',
+    icon: options.icon ?? '',
+    component: options.component ?? '',
+    keepAlive: options.keepAlive ?? false,
+    show: options.show ?? true,
+    showTab: options.showTab ?? true,
+    authCode: options.authCode ?? '',
+    order: options.order || 1,
+    layout: options.layout ?? '',
+    method: options.method ?? '',
+    description: options.description ?? '',
+    createTime: options.createTime || new Date(),
+    updateTime: options.updateTime || new Date(),
+    children: options.children || []
+  };
+}
+
+/**
+ * 创建复杂菜单树的辅助函数
+ */
+function createComplexMenuTree(): MockMenuTemplate[] {
+  return [
+    createMockMenuItem({
+      id: 1,
+      code: 'parent1',
+      name: 'Parent Menu 1',
+      path: '/parent1',
+      order: 1,
+      children: [
+        createMockMenuItem({
+          id: 2,
+          code: 'child1',
+          name: 'Child Menu 1',
+          parentId: 1,
+          path: '/child1',
+          order: 1
+        }),
+        createMockMenuItem({
+          id: 3,
+          code: 'child2',
+          name: 'Child Menu 2',
+          parentId: 1,
+          path: '/child2',
+          order: 2
+        })
+      ]
+    }),
+    createMockMenuItem({
+      id: 4,
+      code: 'parent2',
+      name: 'Parent Menu 2',
+      path: '/parent2',
+      order: 2,
+      children: []
+    }),
+    createMockMenuItem({
+      id: 5,
+      code: 'single',
+      name: 'Single Menu',
+      path: '/single',
+      order: 3
+    })
+  ];
+}
+
+/**
+ * 创建简单菜单树的辅助函数
+ */
+function createSimpleMenuTree(): MockMenuTemplate[] {
+  return [
+    createMockMenuItem({
+      id: 1,
+      code: 'parent_no_perm',
+      name: 'Parent No Permission',
+      path: '/parent_no_perm',
+      children: [
+        createMockMenuItem({
+          id: 2,
+          code: 'child_with_perm',
+          name: 'Child With Permission',
+          parentId: 1,
+          path: '/child_with_perm'
+        })
+      ]
+    })
+  ];
+}
+
+/**
+ * 创建单个菜单项的辅助函数
+ */
+function createSingleMenuItem(code: string = 'test_menu', name: string = 'Test Menu'): MockMenuTemplate[] {
+  return [
+    createMockMenuItem({
+      id: 1,
+      code,
+      name,
+      path: `/${code}`
+    })
+  ];
+}
+
 // 登录配置常量
 const LOGIN_CONFIG = {
   username: 'admin',
@@ -194,9 +333,136 @@ describe('User Module Error Coverage Tests', () => {
    * 测试UserService.getMenus方法 - 空菜单树
    */
   it('should handle empty menu tree in getMenus', async () => {
-    // 这个测试需要mock resourceService.getMenuTree返回空数组
+    // Mock resourceService.getMenuTree返回空数组
+    const mockGetMenuTree = jest.spyOn(userService.resourceService, 'getMenuTree')
+      .mockResolvedValue([]);
+
     const result = await userService.getMenus('admin');
     expect(Array.isArray(result)).toBe(true);
+    expect(result.length).toBe(0);
+
+    mockGetMenuTree.mockRestore();
+  });
+
+  /**
+   * 测试UserService.getMenus方法 - 包含子菜单的情况
+   */
+  it('should handle menu tree with children in getMenus', async () => {
+    // Mock菜单树数据，包含有权限和无权限的菜单项
+    const mockMenuTree = createComplexMenuTree();
+
+    const mockGetMenuTree = jest.spyOn(userService.resourceService, 'getMenuTree')
+      .mockResolvedValue(mockMenuTree);
+
+    // Mock权限校验，只允许部分菜单
+    const mockBatchEnforce = jest.spyOn(userService.casbinService.enforcer, 'batchEnforce')
+      .mockResolvedValue([true, false, true, false, true]); // parent1, child1, child2, parent2, single
+
+    const result = await userService.getMenus('admin');
+    expect(Array.isArray(result)).toBe(true);
+    
+    // 验证过滤逻辑：parent1应该保留（有权限），parent2应该被过滤（无权限且无子菜单），single应该保留（有权限）
+    const parentCodes = result.map(item => item.code);
+    expect(parentCodes).toContain('parent1');
+    expect(parentCodes).toContain('single');
+
+    mockGetMenuTree.mockRestore();
+    mockBatchEnforce.mockRestore();
+  });
+
+  /**
+   * 测试UserService.getMenus方法 - 父菜单无权限但有子菜单权限的情况
+   */
+  it('should keep parent menu when it has no permission but children have permissions', async () => {
+    const mockMenuTree = createSimpleMenuTree();
+
+    const mockGetMenuTree = jest.spyOn(userService.resourceService, 'getMenuTree')
+      .mockResolvedValue(mockMenuTree);
+
+    // Mock权限校验：父菜单无权限，子菜单有权限
+    const mockBatchEnforce = jest.spyOn(userService.casbinService.enforcer, 'batchEnforce')
+      .mockResolvedValue([false, true]); // parent_no_perm: false, child_with_perm: true
+
+    const result = await userService.getMenus('admin');
+    expect(Array.isArray(result)).toBe(true);
+    
+    // 父菜单应该被保留，因为它有子菜单权限
+    expect(result.length).toBe(1);
+    expect(result[0].code).toBe('parent_no_perm');
+    expect(result[0].children.length).toBe(1);
+    expect(result[0].children[0].code).toBe('child_with_perm');
+
+    mockGetMenuTree.mockRestore();
+    mockBatchEnforce.mockRestore();
+  });
+
+  /**
+   * 测试UserService.getMenus方法 - 权限校验异常
+   */
+  it('should handle permission check error in getMenus', async () => {
+    const mockMenuTree = createSingleMenuItem('test_menu', 'Test Menu');
+
+    const mockGetMenuTree = jest.spyOn(userService.resourceService, 'getMenuTree')
+      .mockResolvedValue(mockMenuTree);
+
+    // Mock权限校验异常
+    const mockBatchEnforce = jest.spyOn(userService.casbinService.enforcer, 'batchEnforce')
+      .mockRejectedValue(new Error('Permission check failed'));
+
+    await expect(userService.getMenus('admin')).rejects.toThrow('Permission check failed');
+
+    mockGetMenuTree.mockRestore();
+    mockBatchEnforce.mockRestore();
+  });
+
+  /**
+   * 测试UserService.getUserInfo方法 - 用户不存在
+   */
+  it('should handle non-existent user in getUserInfo', async () => {
+    const mockFindUnique = jest.spyOn(userService.prisma.user, 'findUnique')
+      .mockResolvedValue(null);
+
+    await expect(userService.getUserInfo(999999)).rejects.toThrow();
+
+    mockFindUnique.mockRestore();
+  });
+
+  /**
+   * 测试UserService.getUserInfo方法 - 角色字典为空
+   */
+  it('should handle empty role dict in getUserInfo', async () => {
+    const mockUser = {
+      id: 1,
+      username: 'testuser',
+      password: 'hashedpassword',
+      email: 'test@example.com',
+      phone: '',
+      nickName: '',
+      address: '',
+      system: false,
+      passwordVersion: 1,
+      gender: 0,
+      avatar: '',
+      createTime: new Date(),
+      updateTime: new Date()
+    };
+
+    const mockFindUnique = jest.spyOn(userService.prisma.user, 'findUnique')
+      .mockResolvedValue(mockUser);
+
+    const mockGetAdminGroup = jest.spyOn(userService.casbinService, 'getAdminGroup')
+      .mockResolvedValue(['TEST_ROLE']);
+
+    const mockGetRoleDict = jest.spyOn(userService.dictService, 'getRoleDict')
+      .mockResolvedValue([]);
+
+    const result = await userService.getUserInfo(1);
+    expect(result.roles).toEqual([]);
+    expect(result.currentRole).toBeUndefined();
+
+    mockFindUnique.mockRestore();
+    mockGetAdminGroup.mockRestore();
+    mockGetRoleDict.mockRestore();
   });
 
   /**

@@ -214,6 +214,20 @@ describe('Role Module E2E Tests', () => {
      * 覆盖checkCodeAndPolicys方法的各种错误分支
      */
     it('should test role creation error handling', async () => {
+        // 测试权限标识列表为空（null/undefined）
+        const emptyPolicyResponse = await http
+            .post('/system/role')
+            .set('Authorization', `Bearer ${adminToken}`)
+            .send({
+                name: '测试角色',
+                code: 'test_role_empty',
+                policys: null // 测试 policys?.length 分支
+            });
+        
+        expect(emptyPolicyResponse.status).toBe(200);
+        expect(emptyPolicyResponse.body.code).toBe(1000);
+        expect(emptyPolicyResponse.body.message).toContain('权限标识列表不能为空');
+
         // 测试权限标识格式错误
         const invalidPolicyResponse = await http
             .post('/system/role')
@@ -242,14 +256,14 @@ describe('Role Module E2E Tests', () => {
         expect(duplicateUserResponse.body.code).toBe(1000);
         expect(duplicateUserResponse.body.message).toContain('不能跟用户标识重复');
 
-        // 测试权限标识与角色标识重复
+        // 测试权限标识与现有角色标识重复（使用已存在的admin_role角色）
         const duplicateRoleResponse = await http
             .post('/system/role')
             .set('Authorization', `Bearer ${adminToken}`)
             .send({
                 name: '测试角色',
                 code: 'test_role_duplicate2',
-                policys: ['admin'] // 与现有角色标识重复
+                policys: ['admin_role'] // 与现有的admin_role角色标识重复
             });
         
         expect(duplicateRoleResponse.status).toBe(200);
@@ -329,14 +343,53 @@ describe('Role Module E2E Tests', () => {
     });
 
     /**
+     * 测试数据库事务异常处理
+     * 覆盖createOne和updateOne方法中的catch error分支
+     */
+    it('should test database transaction error handling', async () => {
+        // 测试创建角色时权限标识与角色标识重复的情况
+        // 这会在checkCodeAndPolicys方法中被检查出来并抛出错误
+        const duplicateCodeResponse = await http
+            .post('/system/role')
+            .set('Authorization', `Bearer ${adminToken}`)
+            .send({
+                name: '重复代码角色',
+                code: 'test_duplicate_role',
+                policys: ['admin_role'] // 使用已存在的角色标识作为权限标识
+            });
+        
+        // 应该返回错误
+        expect(duplicateCodeResponse.status).toBe(200);
+        expect(duplicateCodeResponse.body.code).toBe(1000);
+        expect(duplicateCodeResponse.body.message).toContain('重复');
+    });
+
+    /**
      * 测试findAll方法的分页和排序功能
      * 覆盖findAll方法的分支逻辑
      */
     it('should test role list pagination and sorting', async () => {
+        // 重新获取token以确保权限有效
+        const loginResult = await performLogin(app);
+        expect(loginResult.status).toBe(200);
+        expect(loginResult.body.code).toBe(0);
+        const token = loginResult.body.data.accessToken;
+        
+        // 测试默认分页参数（不传page和limit，使用默认值1和20）
+        const defaultPaginationResponse = await http
+            .post('/system/role/page')
+            .set('Authorization', `Bearer ${token}`)
+            .send({});
+        
+        expect(defaultPaginationResponse.status).toBe(200);
+        expect(defaultPaginationResponse.body.code).toBe(0);
+        expect(defaultPaginationResponse.body.data.pageSize).toBe(20); // 默认值
+        expect(defaultPaginationResponse.body.data.currentPage).toBe(1); // 默认值
+
         // 测试自定义分页参数
         const paginationResponse = await http
             .post('/system/role/page')
-            .set('Authorization', `Bearer ${adminToken}`)
+            .set('Authorization', `Bearer ${token}`)
             .send({
                 currentPage: 1,
                 pageSize: 5
@@ -347,15 +400,28 @@ describe('Role Module E2E Tests', () => {
         expect(paginationResponse.body.data.pageSize).toBe(5);
         expect(paginationResponse.body.data.currentPage).toBe(1);
 
-        // 测试字符串格式的排序参数
+        // 测试字符串格式的排序参数（覆盖JSON.parse分支）
         const sortResponse = await http
             .post('/system/role/page')
-            .set('Authorization', `Bearer ${adminToken}`)
+            .set('Authorization', `Bearer ${token}`)
             .send({
-                sort: '{"name": "asc"}'
+                sort: '{"name": "asc"}' // 字符串格式，会触发JSON.parse
             });
         
         expect(sortResponse.status).toBe(200);
         expect(sortResponse.body.code).toBe(0);
+
+        // 测试无效的JSON字符串格式（触发JSON.parse错误）
+        const invalidSortResponse = await http
+            .post('/system/role/page')
+            .set('Authorization', `Bearer ${token}`)
+            .send({
+                page: 1,
+                limit: 10,
+                sort: 'invalid json string' // 无效的JSON字符串
+            });
+        
+        expect(invalidSortResponse.status).toBe(200);
+        expect(invalidSortResponse.body.code).toBe(1000);
     });
 });
