@@ -385,32 +385,32 @@ const createBasicData = async () => {
 };
 
 const main = async () => {
-  console.log('🚀 开始初始化数据...');
+  console.log('开始初始化数据...');
   
   try {
     // 1. 创建系统角色
-    console.log('📝 创建系统角色...');
+    console.log('创建系统角色...');
     await createSystemRoles();
     
     // 2. 创建系统用户
-    console.log('👤 创建系统用户...');
+    console.log('创建系统用户...');
     await createSystemUsers();
     
     // 3. 创建菜单资源
-    console.log('🗂️ 创建菜单资源...');
+    console.log('创建菜单资源...');
     await createMenuResources();
     
     // 4. 分配权限
-    console.log('🔐 分配权限...');
+    console.log('分配权限...');
     await assignPermissions();
     
     // 5. 创建基础数据
-    console.log('📊 创建基础数据...');
+    console.log('创建基础数据...');
     await createBasicData();
     
-    console.log('✅ 数据初始化完成！');
+    console.log('数据初始化完成！');
   } catch (error) {
-    console.error('❌ 数据初始化失败:', error);
+    console.error('数据初始化失败:', error);
     throw error;
   }
 };
