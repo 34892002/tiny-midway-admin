@@ -1,6 +1,7 @@
 import { UseGuard, Post, Del, Put, Inject, Controller, Body, Param } from '@midwayjs/core';
 import { Context } from '@midwayjs/koa';
 import { JwtPassportMiddleware } from '../../../middleware/jwt.middleware';
+import { AdminErrorEnum } from '../../../error/admin.error';
 import { MidwayError } from '@midwayjs/core';
 
 import { UserService } from '../service/user.service';
@@ -56,7 +57,7 @@ export class RoleController {
     if (process.env.RUN_DEMO === 'true') {
       throw new MidwayError('演示环境不能修改用户信息', '5005');
     }
-    
+
     const userId = Number(id);
     // 获取当前登录用户信息
     const currentUser = this.ctx.state?.user;
@@ -69,6 +70,11 @@ export class RoleController {
     // 业务规则检查：非系统用户不能修改系统用户
     if (targetUser.system && !currentUser.system) {
       throw new MidwayError('权限不足，无法修改系统用户信息', '5003');
+    }
+
+    // 修改了自己的信息，通知前端，踢下线重新登录。
+    if (currentUser.id === userId) {
+      return AdminErrorEnum.TIMEOUT_USER_DATA;
     }
 
     return await this.userService.updateOne(userId, obj);

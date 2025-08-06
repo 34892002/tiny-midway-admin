@@ -3,7 +3,6 @@ import { PrismaClient } from '@prisma/client';
 import { MidwayError } from '@midwayjs/core';
 import { CasbinService } from '../../base/service/casbin.service';
 import { UserDto } from '../dto/user';
-import { AdminErrorEnum } from '../../../error/admin.error';
 import { Options } from '../../../core/crud_service';
 import * as bcrypt from 'bcrypt';
 
@@ -93,8 +92,6 @@ export class UserService {
   async updateOne(id: number, _data: UserDto) {
     // 不信任controller提交信息，直接查询数据库
     const registeredUser = await this.prisma.user.findUnique({ where: { id } });
-    // 修改老用户密码
-    const updatePwd = registeredUser && _data.password;
     // 新建用户数据
     let create = _.omit(_data, ['roles']);
     // 更新用户数据，不能修改username，因为它在casbin表中作为权限code
@@ -136,10 +133,6 @@ export class UserService {
       await this.reload();
     }
 
-    if (updatePwd) {
-      // 修改了密码，通知前端，踢用户下线重新登录
-      return AdminErrorEnum.TIMEOUT_USER_DATA;
-    }
     return true;
   }
   
