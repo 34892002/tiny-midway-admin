@@ -83,41 +83,52 @@ export class UserService {
     });
     return { records: rows, total: count, currentPage: page, pageSize: limit };
   }
+
+  /**
+   * 更新用户信息
+   * @param id 用户ID
+   * @param _data 用户数据
+   * @returns 更新结果
+   */
   async updateOne(id: number, _data: UserDto) {
-    const user = await this.prisma.user.findUnique({ where: { id } });
-    const updatePwd = user && _data.password;
-    if (user) {
-      // 修改用户信息不会上传 passwordVersion
-      // 系统内置账号不能修改系统属性
-      if (_data.system !== user.system) throw new MidwayError('用户不能修改系统属性', '5002');
-      if (user.system) {
-        // 系统内置账号不能修改角色属性
-        const roles = await this.casbinService.getAdminGroup(user.username);
-        const isEqual = _.isEqual(_data.roles, roles);
-        if (!isEqual) throw new MidwayError('系统用户不能修改角色', '5002');
+    // 不信任controller提交信息，直接查询数据库
+    const registeredUser = await this.prisma.user.findUnique({ where: { id } });
+    // 修改老用户密码
+    const updatePwd = registeredUser && _data.password;
+    // 新建用户数据
+    let create = _.omit(_data, ['roles']);
+    // 更新用户数据，不能修改username，因为它在casbin表中作为权限code
+    let update = _.omit(_data, ['username', 'roles']);
+    // 角色列表
+    let curRoles = _data.roles;
+    // 操作用户名
+    let targetUsername = ''
+    
+    if (registeredUser) {
+      // 修改用户
+      // 使用查询到的信息
+      targetUsername = registeredUser.username;
+      if (_data.password) {
+        // 老用户修改密码，更新passwordVersion
+        update.password = await bcrypt.hash(_data.password, 10);
+        update.passwordVersion = registeredUser.passwordVersion + 1;
       }
-      // 如果修改密码才有值，否则取旧密码
-      if (updatePwd) {
-        _data.password = await bcrypt.hash(_data.password, 10);
-        _data.passwordVersion = user.passwordVersion + 1;
-      } else {
-        _data.password = user.password;
-      }
+      
     } else {
       // 新增用户
-      _data.password = await bcrypt.hash(_data.password, 10);
+      // 使用参数提交的信息
+      targetUsername = _data.username;
+      create.password = await bcrypt.hash(_data.password, 10);
     }
-    const curRoles = _data.roles;
-    const create = _.omit(_data, ['roles']);
-    // 不能修改username，因为它在casbin表中作为权限code
-    const update = _.omit(_data, ['username', 'roles']);
-    const name = _data.username;
-    await this.checkNameAndRoles(name, curRoles);
+
+    // 数据完整性校验
+    await this.checkNameAndRoles(targetUsername, curRoles);
+    
     try {
       await this.prisma.$transaction(async client => {
         await client.user.upsert({ where: { id }, update, create });
         // 同步该用户的所有角色
-        await this.casbinService.syncAdminDBRulesIncremental('g', name, curRoles, '', client);
+        await this.casbinService.syncAdminDBRulesIncremental('g', targetUsername, curRoles, '', client);
       });
     } catch (error) {
       throw error;
@@ -126,11 +137,12 @@ export class UserService {
     }
 
     if (updatePwd) {
-      // 修改了密码，踢下线，重新登录
+      // 修改了密码，通知前端，踢用户下线重新登录
       return AdminErrorEnum.TIMEOUT_USER_DATA;
     }
     return true;
   }
+  
   async deleteById(id: number) {
     await this.prisma.$transaction(async client => {
       const user = await client.user.findUnique({ where: { id }, select: { username: true, system: true } });
@@ -155,8 +167,71 @@ export class UserService {
     const user = await this.prisma.user.findFirst({
       where: { username },
     });
-    // 去掉密码
+    // 去掉密码 
     const safe = _.omit(user, 'password');
     return safe;
+  }
+
+  /**
+   * 获取用户的角色列表
+   * @param username 用户名
+   * @returns 返回用户的角色数组
+   */
+  async getUserRoles(username: string): Promise<string[]> {
+    try {
+      const roles = await this.casbinService.getAdminGroup(username);
+      return roles || [];
+    } catch (error) {
+      return [];
+    }
+  }
+
+  /**
+   * 检查用户是否具有指定的角色
+   * @param username 用户名
+   * @param targetRoles 目标角色列表
+   * @returns 返回布尔值，表示用户是否具有指定角色中的任意一个
+   */
+  async hasRoles(username: string, targetRoles: string[]): Promise<boolean> {
+    try {
+      // 参数校验
+      if (!username || !targetRoles || targetRoles.length === 0) {
+        return false;
+      }
+
+      // 获取用户的所有角色
+      const userRoles = await this.getUserRoles(username);
+      
+      // 如果没有角色，返回false
+      if (!userRoles || userRoles.length === 0) {
+        return false;
+      }
+      
+      // 检查是否包含指定角色中的任意一个（严格匹配，区分大小写）
+      return userRoles.some(role => targetRoles.includes(role));
+    } catch (error) {
+      // 如果查询出错，为了安全起见返回false
+      return false;
+    }
+  }
+
+  /**
+   * 检查用户是否具有管理员角色
+   * @param username 用户名
+   * @returns 返回布尔值，表示用户是否具有管理员权限
+   */
+  async hasAdminRole(username: string): Promise<boolean> {
+    const roles = ['business_role'];
+    return this.hasRoles(username, roles);
+  }
+
+  /**
+   * 检查用户是否具有超级管理员角色
+   * @param username 用户名
+   * @returns 返回布尔值，表示用户是否具有超级管理员权限
+   */
+  async hasRootRole(username: string): Promise<boolean> {
+    const roles = ['admin_role'];
+    return this.hasRoles(username, roles);
   }
 }

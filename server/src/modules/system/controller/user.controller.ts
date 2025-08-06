@@ -40,17 +40,38 @@ export class RoleController {
     return data;
   }
 
-  // 修改
+  /**
+   * 修改用户信息
+   * @param id 用户ID
+   * @param obj 用户更新数据
+   * @returns 更新结果
+   */
   @Access('UserMgt')
   @Put('/:id')
   async update(
     @Param('id') id: string,
     @Body() obj: any,
   ) {
+    // 演示环境检查（环境保护规则）
     if (process.env.RUN_DEMO === 'true') {
-      if (obj.system) { throw new MidwayError('演示环境不能修改Root用户', '5005') };
+      throw new MidwayError('演示环境不能修改用户信息', '5005');
     }
-    return await this.userService.updateOne(Number(id), obj);
+    
+    const userId = Number(id);
+    // 获取当前登录用户信息
+    const currentUser = this.ctx.state?.user;
+    // 获取目标用户信息
+    const targetUser = await this.userService.safeUserById(userId);
+    if (!targetUser) {
+      throw new MidwayError('目标用户不存在', '5004');
+    }
+    
+    // 业务规则检查：非系统用户不能修改系统用户
+    if (targetUser.system && !currentUser.system) {
+      throw new MidwayError('权限不足，无法修改系统用户信息', '5003');
+    }
+
+    return await this.userService.updateOne(userId, obj);
   }
 
   // 添加

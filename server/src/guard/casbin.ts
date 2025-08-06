@@ -4,34 +4,6 @@ import { CasbinService } from '../modules/base/service/casbin.service';
 import { PrismaClient } from '@prisma/client';
 import { ACCESS_META_KEY } from '../decorator/access';
 
-export enum RuleAction {
-  READ = 'read',
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-}
-
-export enum RulePossession {
-  ANY = 'any',
-  OWN = 'own',
-  'ANY|OWN' = 'any|own',
-}
-
-export enum RuleResource {
-  PROJECT_DATA = 'project_obj',
-  SHCEMA_DATA = 'shcema_obj',
-  USER_DATA = 'user_obj',
-  COMMON_DATA = 'common_obj',
-}
-
-export type RuleOptions = {
-  isEnabled: boolean;
-  resource: RuleResource;
-  action: RuleAction;
-  possession: RulePossession;
-  isOwn: ((ctx: any) => boolean) | ((ctx: any) => Promise<boolean>);
-};
-
 @Guard()
 export class CasbinGuard implements IGuard<Context> {
   @Config('casbin')
@@ -42,19 +14,36 @@ export class CasbinGuard implements IGuard<Context> {
   @Inject('prisma')
   prismaClient: PrismaClient;
 
+  /**
+   * 权限检查方法
+   * @param ctx 上下文对象
+   * @param supplierClz 控制器类
+   * @param methodName 方法名
+   * @returns 是否有权限
+   */
   async canActivate(
     ctx: Context, supplierClz, methodName: string
   ): Promise<boolean> {
     const act = 'access';
-    const code = getPropertyMetadata<string[]>(ACCESS_META_KEY, supplierClz, methodName);
-    // 缺少信息的直接403
-    const username = ctx.state?.user?.username;
-    // TODO: 扩展，暂不支持多个角色，未登录用户给予guest权限
-    const role = username ? username : 'guest';
-    return await this.casbinService.enforcer.enforce(
-      role, // 角色
-      code, // 权限
+    const code = getPropertyMetadata<string>(ACCESS_META_KEY, supplierClz, methodName);
+    const currentUser = ctx.state?.user;
+    const username = currentUser?.username;
+    
+    // 未登录用户使用guest权限
+    const subject = username ? username : 'guest';
+    
+    // 基础权限检查
+    const hasBasicPermission = await this.casbinService.enforcer.enforce(
+      subject, // 用户名或guest
+      code, // 权限代码
       act, // 操作
     );
+    
+    // 如果没有基础权限，直接拒绝
+    if (!hasBasicPermission) {
+      return false;
+    }
+    
+    return true;
   }
 }

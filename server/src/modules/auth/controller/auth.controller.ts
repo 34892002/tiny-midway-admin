@@ -44,8 +44,8 @@ export class AuthController {
       const expiresIn = login.isRemember ?
         this.mnAdmin.token.refresh_token_max :
         this.mnAdmin.token.refresh_token_default;
-      // 创建存入jwt的数据
-      const _user = _.pick(user, ['id', 'username', 'nickName']);
+      // 创建存入jwt的数据，存储很少会修改的数据
+      const _user = _.pick(user, ['id', 'username', 'nickName', 'system']);
       // 签发token
       const accessToken = await this.jwt.sign(_user, { expiresIn: this.mnAdmin.token.token_default });
       const referenceParams = { id: user.id, passwordVersion: user.passwordVersion };
