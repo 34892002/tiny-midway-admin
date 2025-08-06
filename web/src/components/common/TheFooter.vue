@@ -10,14 +10,14 @@
 <template>
   <footer class="f-c-c text-14 text-gray-500">
     <p>
-      Copyright © 2023
+      Copyright © 2025
       <a
-        href="https://github.com/zclzone"
+        href="https://github.com/34892002/tiny-midway-admin"
         target="__blank"
         class="transition"
         hover="decoration-underline color-primary"
       >
-        Ronnie Zhang(大脸怪)
+        ggyy(4892002)
       </a>
     </p>
   </footer>
