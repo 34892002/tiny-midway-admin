@@ -1,25 +1,54 @@
-import { Catch } from '@midwayjs/core';
+import { Catch, MidwayHttpError } from '@midwayjs/core';
 import { Context } from '@midwayjs/koa';
+import { AdminBusinessError } from '../error/admin.error';
 
 @Catch()
 export class DefaultErrorFilter {
   async catch(err: any, ctx: Context) {
-    // 所有的未分类错误会到这里
-    const code = err.status || err.code;
-    // 把code转换成数字类型
-    const code2 = +code;
-    const msg = err.message;
-    console.log('@统一异常捕获处理: ', err);
-    // 不拦截下面的code，前端有特殊处理
-    const ignore = [401, 403, 500];
-    if (ignore.includes(code2)) {
-      ctx.status = code2;
-      ctx.body = { message: msg };
-    } else {
-      // 抛出异常信息
-      // 前端抛出code不为0或者200的msg信息弹窗
-      // 没有具体业务code的错误统一返回1000
-      return { code: 1000, error: 'DefaultError', message: msg };
+    // 记录系统错误日志
+    ctx.logger.error('System Error:', err, {
+      path: ctx.path,
+      method: ctx.method,
+      userAgent: ctx.get('user-agent'),
+      ip: ctx.ip,
+      stack: err.stack
+    });
+
+    // 处理 Midway HTTP 错误
+    if (err instanceof MidwayHttpError) {
+      const httpStatus = err.status || 500;
+      
+      // 对于特定的 HTTP 状态码，直接设置响应状态
+      const directStatusCodes = [401, 403, 500];
+      if (directStatusCodes.includes(httpStatus)) {
+        ctx.status = httpStatus;
+        return { 
+          message: err.message,
+          status: httpStatus
+        };
+      }
     }
+
+    // 处理 AdminBusinessError
+    if (err instanceof AdminBusinessError) {
+      return {
+        code: err.businessCode,
+        error: 'Business Error',
+        message: err.businessMessage,
+        status: 200
+      };
+    }
+
+    // 处理其他类型的错误
+    const status = err.status || err.code || 500;
+    const message = err.message || 'Internal Server Error';
+
+    // 对于未分类的错误，返回统一格式
+    return { 
+      code: 9999, 
+      error: 'System Error', 
+      message: message,
+      status: +status
+    };
   }
 }

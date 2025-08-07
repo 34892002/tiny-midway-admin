@@ -2,6 +2,7 @@ import { Provide, Scope, ScopeEnum, Config, Init, Inject } from '@midwayjs/core'
 import { PrismaAdapter } from 'casbin-prisma-adapter';
 import * as casbin from 'casbin';
 import { PrismaClient } from '@prisma/client';
+import { AdminBusinessError, BusinessErrors } from '../../../error/admin.error';
 
 type GetListTypeString = 'role' | 'policy';
 
@@ -147,7 +148,7 @@ export class CasbinService {
   }
 
   async addAdminPolices(role: string, codes: string[], save: boolean = true) {
-    if (!role) return Promise.reject('角色不能为空');
+    if (!role) throw new AdminBusinessError(BusinessErrors.ROLE_IDENTIFIER_EMPTY);
     if (!codes.length) return true;
     const act = 'access'
     // 转换为 casbin 需要的格式
@@ -160,7 +161,7 @@ export class CasbinService {
   }
 
   async addAdminRole(username: string, roles: string[], save: boolean = true) {
-    if (!username) return Promise.reject('用户名不能为空');
+    if (!username) throw new AdminBusinessError(BusinessErrors.USER_IDENTIFIER_EMPTY);
     if (!roles.length) return true;
     // 转换为 casbin 需要的格式
     const policys = roles.map(role => [username, role]);
@@ -172,7 +173,7 @@ export class CasbinService {
   }
 
   async removeAdminRole(username: string, roles: string[], save: boolean = true) {
-    if (!username) return Promise.reject('用户名不能为空');
+    if (!username) throw new AdminBusinessError(BusinessErrors.USER_IDENTIFIER_EMPTY);
     if (!roles.length) return true;
     // 转换为 casbin 需要的格式
     const policys = roles.map(role => [username, role]);
@@ -184,7 +185,7 @@ export class CasbinService {
   }
 
   async removeAdminPolicy(role: string, codes: string[], save: boolean = true) {
-    if (!role) return Promise.reject('角色不能为空');
+    if (!role) throw new AdminBusinessError(BusinessErrors.ROLE_IDENTIFIER_EMPTY);
     if (!codes.length) return true;
     const act = 'access'
     // 转换为 casbin 需要的格式
@@ -256,7 +257,7 @@ export class CasbinService {
     v0: string,
     client: Omit<PrismaClient, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends"> = this.prismaClient,
   ) {
-    if (!v0) return Promise.reject('name标识不能为空');
+    if (!v0) throw new AdminBusinessError(BusinessErrors.USER_IDENTIFIER_EMPTY);
     await client.casbinRule.deleteMany({
       where: {
         ptype,
@@ -275,8 +276,8 @@ export class CasbinService {
     // 假设 role-a = [read,write] role-b = [read,write]
     // 删除 delete p,read
     // 则 role-a = [read] role-b = [write]
-    // if (!code) throw new MidwayError('权限标识不能为空', '5002');
-    if (!v1) return Promise.reject('code标识不能为空');
+    // if (!code) throw new AdminBusinessError(BusinessErrors.PERMISSION_IDENTIFIER_EMPTY);
+    if (!v1) throw new AdminBusinessError(BusinessErrors.PERMISSION_IDENTIFIER_EMPTY);
     await client.casbinRule.deleteMany({
       where: {
         ptype,

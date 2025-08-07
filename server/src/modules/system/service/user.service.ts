@@ -1,6 +1,6 @@
 import { Provide, Inject } from '@midwayjs/core';
 import { PrismaClient } from '@prisma/client';
-import { MidwayError } from '@midwayjs/core';
+import { AdminBusinessError, BusinessErrors } from '../../../error/admin.error';
 import { CasbinService } from '../../base/service/casbin.service';
 import { UserDto } from '../dto/user';
 import { Options } from '../../../core/crud_service';
@@ -39,31 +39,31 @@ export class UserService {
    * @param name 用户标识
    * @param roles 角色标识列表
    * @returns 校验成功返回true，否则抛出错误
-   * @throws MidwayError 当用户标识为空、角色标识列表为空、角色标识为空、角色标识不符合规则、角色标识重复、用户标识与角色标识重复、角色标识与权限标识重复时抛出错误
+   * @throws AdminBusinessError 当用户标识为空、角色标识列表为空、角色标识为空、角色标识不符合规则、角色标识重复、用户标识与角色标识重复、角色标识与权限标识重复时抛出错误
    */
   async checkNameAndRoles(name: string, roles: string[]) {
-    if (!name) throw new MidwayError('用户标识不能为空', '5002');
-    if (!roles?.length) throw new MidwayError('角色标识列表不能为空', '5002');
-    if (!roles.every(item => item)) throw new MidwayError('角色标识不能为空', '5002');
+    if (!name) throw new AdminBusinessError(BusinessErrors.USER_IDENTIFIER_EMPTY);
+    if (!roles?.length) throw new AdminBusinessError(BusinessErrors.ROLE_LIST_EMPTY);
+    if (!roles.every(item => item)) throw new AdminBusinessError(BusinessErrors.ROLE_IDENTIFIER_EMPTY);
     const regex = /^(?!^\d)[a-zA-Z0-9_]+$/;
-    if (!roles.every(item => regex.test(item))) throw new MidwayError('角色标识不符合规则', '5002');
-    if (roles.length !== new Set(roles).size) throw new MidwayError('角色标识不能重复', '5002');
+    if (!roles.every(item => regex.test(item))) throw new AdminBusinessError(BusinessErrors.ROLE_IDENTIFIER_INVALID);
+    if (roles.length !== new Set(roles).size) throw new AdminBusinessError(BusinessErrors.ROLE_IDENTIFIER_DUPLICATE);
     // 用户标识不能跟提交的角色标识重复
-    if (roles.includes(name)) throw new MidwayError('用户标识不能跟角色标识重复', '5002');
+    if (roles.includes(name)) throw new AdminBusinessError(BusinessErrors.USER_ROLE_CONFLICT);
     // 用户标识不能跟角色标识重复
     const _roleList = await this.casbinService.getAllRolesAndPlicysByDB('role');
     const roleList = _roleList.map(item => item.role);
-    if (roleList.includes(name)) throw new MidwayError('用户标识不能跟角色标识重复', '5002');
+    if (roleList.includes(name)) throw new AdminBusinessError(BusinessErrors.USER_ROLE_CONFLICT);
     // 角色不能跟权限重复
     // 权限不能跟角色重复
     const _List = await this.casbinService.getAllRolesAndPlicysByDB('policy')
     const policyList = _List.map(item => item.policy)
     roles.forEach(item => {
-      if (policyList.includes(item)) throw new MidwayError('角色标识不能跟权限标识重复', '5002');
+      if (policyList.includes(item)) throw new AdminBusinessError(BusinessErrors.ROLE_PERMISSION_CONFLICT);
     });
     return true;
   }
-  public async findAll(where:any, options: Partial<Options>): Promise<{ records: any[]; total: number; currentPage: number; pageSize: number }> {
+  public async findAll(where: any, options: Partial<Options>): Promise<{ records: any[]; total: number; currentPage: number; pageSize: number }> {
     const { select, include, sort = { id: 'desc' }, page = 1, limit = 20 } = options;
     const orderBy = typeof sort === 'string' ? JSON.parse(sort) : sort;
     const skip = (Number(page) - 1) * Number(limit);
@@ -100,7 +100,7 @@ export class UserService {
     let curRoles = _data.roles;
     // 操作用户名
     let targetUsername = ''
-    
+
     if (registeredUser) {
       // 修改用户
       // 使用查询到的信息
@@ -110,7 +110,7 @@ export class UserService {
         update.password = await bcrypt.hash(_data.password, 10);
         update.passwordVersion = registeredUser.passwordVersion + 1;
       }
-      
+
     } else {
       // 新增用户
       // 使用参数提交的信息
@@ -120,10 +120,16 @@ export class UserService {
 
     // 数据完整性校验
     await this.checkNameAndRoles(targetUsername, curRoles);
-    
+
     try {
       await this.prisma.$transaction(async client => {
-        await client.user.upsert({ where: { id }, update, create });
+        if (registeredUser) {
+          // 更新现有用户
+          await client.user.update({ where: { id }, data: update });
+        } else {
+          // 创建新用户（不指定 ID，让数据库自动生成）
+          await client.user.create({ data: create });
+        }
         // 同步该用户的所有角色
         await this.casbinService.syncAdminDBRulesIncremental('g', targetUsername, curRoles, '', client);
       });
@@ -135,11 +141,11 @@ export class UserService {
 
     return true;
   }
-  
+
   async deleteById(id: number) {
     await this.prisma.$transaction(async client => {
       const user = await client.user.findUnique({ where: { id }, select: { username: true, system: true } });
-      if (user.system) throw new MidwayError('系统用户不能删除', '5002');
+      if (user.system) throw new AdminBusinessError(BusinessErrors.SYSTEM_USER_DELETE_FORBIDDEN);
       await client.user.delete({ where: { id } });
       // 清空该用户的所有角色
       await this.casbinService.clearDBRulesByV0('g', user.username, client);
@@ -194,12 +200,12 @@ export class UserService {
 
       // 获取用户的所有角色
       const userRoles = await this.getUserRoles(username);
-      
+
       // 如果没有角色，返回false
       if (!userRoles || userRoles.length === 0) {
         return false;
       }
-      
+
       // 检查是否包含指定角色中的任意一个（严格匹配，区分大小写）
       return userRoles.some(role => targetRoles.includes(role));
     } catch (error) {

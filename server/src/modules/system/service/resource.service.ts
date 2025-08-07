@@ -1,6 +1,7 @@
 import { Provide, Inject } from '@midwayjs/core';
 import { PrismaClient, Resource } from '@prisma/client';
 import { CasbinService } from '../../base/service/casbin.service';
+import { AdminBusinessError, SystemErrors } from '../../../error/admin.error';
 
 @Provide()
 export class ResourceService {
@@ -110,7 +111,7 @@ export class ResourceService {
     });
     // 如果有子菜单，则不能删除
     if (count) {
-      throw new Error('该菜单下有子菜单&按钮，请先删除子菜单&按钮!');
+      throw new AdminBusinessError(SystemErrors.MENU_HAS_CHILDREN);
     }
     // 删除权限
     const resource = await this.prisma.resource.findUnique({
