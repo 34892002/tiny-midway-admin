@@ -4,6 +4,7 @@ import { AuthHelper, HttpHelper, DatabaseHelper } from '../__helpers__';
 import { CaptchaService } from '@midwayjs/captcha';
 import { JwtService } from '@midwayjs/jwt';
 import { UserService } from '../../src/modules/system/service/user.service';
+import { AuthErrors } from '../../src/error/admin.error';
 
 /**
  * 认证模块集成测试
@@ -75,7 +76,7 @@ describe('Authentication Integration Tests', () => {
 
       expect(loginResult.status).toBe(200);
       expect(loginResult.body.code).not.toBe(0);
-      expect(loginResult.body.message).toContain('用户名密码错误');
+      expect(loginResult.body.message).toBe(AuthErrors.USR_PWD_ERROR.error);
       expect(AuthHelper.isLoginSuccessful(loginResult)).toBe(false);
     });
 
@@ -95,7 +96,7 @@ describe('Authentication Integration Tests', () => {
 
         expect(loginResult.status).toBe(200);
         expect(loginResult.body.code).not.toBe(0);
-        expect(loginResult.body.message).toContain('验证码错误');
+        expect(loginResult.body.message).toBe(AuthErrors.CAPTCHA_ERROR.error);
         expect(AuthHelper.isLoginSuccessful(loginResult)).toBe(false);
       } finally {
         process.env.NODE_ENV = originalNodeEnv;
@@ -169,7 +170,7 @@ describe('Authentication Integration Tests', () => {
 
       expect(refreshResult.status).toBe(200);
       expect(refreshResult.body.code).not.toBe(0);
-      expect(refreshResult.body.message).toContain('TOKEN_EXPIRED');
+      expect(refreshResult.body.message).toBe('TOKEN_EXPIRED');
     });
 
     it('should handle password version mismatch', async () => {
@@ -185,7 +186,7 @@ describe('Authentication Integration Tests', () => {
 
       expect(refreshResult.status).toBe(200);
       expect(refreshResult.body.code).not.toBe(0);
-      expect(refreshResult.body.message).toContain('TOKEN_PASSWORD_VERSION_ERROR');
+      expect(refreshResult.body.message).toBe('TOKEN_PASSWORD_VERSION_ERROR');
     });
 
     it('should handle invalid refresh token', async () => {
@@ -193,7 +194,7 @@ describe('Authentication Integration Tests', () => {
 
       expect(refreshResult.status).toBe(200);
       expect(refreshResult.body.code).not.toBe(0);
-      expect(refreshResult.body.message).toContain('TOKEN_ERROR');
+      expect(refreshResult.body.message).toBe('TOKEN_ERROR');
     });
 
     it('should handle null or empty refresh token', async () => {
@@ -201,7 +202,7 @@ describe('Authentication Integration Tests', () => {
 
       expect(refreshResult.status).toBe(200);
       expect(refreshResult.body.code).not.toBe(0);
-      expect(refreshResult.body.message).toContain('TOKEN_NULL');
+      expect(refreshResult.body.message).toBe('TOKEN_NULL');
     });
   });
 

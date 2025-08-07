@@ -10,6 +10,7 @@ import { CasbinService } from '../../src/modules/base/service/casbin.service';
 import { UserService } from '../../src/modules/system/service/user.service';
 import { RoleService } from '../../src/modules/system/service/role.service';
 import { PrismaClient } from '@prisma/client';
+import { BusinessErrors, UserDataErrors } from '../../src/error/admin.error';
 import { 
   AuthHelper, 
   DatabaseHelper, 
@@ -182,8 +183,8 @@ describe('Role and Permission Integration Tests', () => {
           policys: null
         });
         
-        HttpHelper.expectError(emptyPolicyResponse, 1000);
-        expect(emptyPolicyResponse.body.message).toContain('权限标识列表不能为空');
+        HttpHelper.expectError(emptyPolicyResponse, BusinessErrors.PERMISSION_LIST_EMPTY.code);
+        expect(emptyPolicyResponse.body.message).toBe(BusinessErrors.PERMISSION_LIST_EMPTY.error);
 
         // 测试权限标识格式错误
         const invalidPolicyResponse = await httpClient.post('/system/role', {
@@ -192,8 +193,8 @@ describe('Role and Permission Integration Tests', () => {
           policys: ['123invalid', 'test:read']
         });
         
-        HttpHelper.expectError(invalidPolicyResponse, 1000);
-        expect(invalidPolicyResponse.body.message).toContain('不符合规则');
+        HttpHelper.expectError(invalidPolicyResponse, BusinessErrors.PERMISSION_IDENTIFIER_INVALID.code);
+        expect(invalidPolicyResponse.body.message).toBe(BusinessErrors.PERMISSION_IDENTIFIER_INVALID.error);
 
         // 测试权限标识与用户标识重复
         const duplicateUserResponse = await httpClient.post('/system/role', {
@@ -202,8 +203,8 @@ describe('Role and Permission Integration Tests', () => {
           policys: ['admin']
         });
         
-        HttpHelper.expectError(duplicateUserResponse, 1000);
-        expect(duplicateUserResponse.body.message).toContain('不能跟用户标识重复');
+        HttpHelper.expectError(duplicateUserResponse, BusinessErrors.PERMISSION_USER_CONFLICT.code);
+        expect(duplicateUserResponse.body.message).toBe(BusinessErrors.PERMISSION_USER_CONFLICT.error);
       });
 
       it('should handle role update errors', async () => {
@@ -213,8 +214,8 @@ describe('Role and Permission Integration Tests', () => {
           policys: ['test:read']
         });
         
-        HttpHelper.expectError(nonExistentRoleResponse, 1000);
-        expect(nonExistentRoleResponse.body.message).toBe('角色不存在');
+        HttpHelper.expectError(nonExistentRoleResponse, UserDataErrors.ROLE_NOT_FOUND.code);
+        expect(nonExistentRoleResponse.body.message).toBe(UserDataErrors.ROLE_NOT_FOUND.error);
 
         // 测试修改系统角色的系统属性
         const listResponse = await httpClient.post('/system/role/page', {});
@@ -229,8 +230,8 @@ describe('Role and Permission Integration Tests', () => {
             policys: ['test:read']
           });
           
-          HttpHelper.expectError(modifySystemResponse, 1000);
-          expect(modifySystemResponse.body.message).toBe('用户不能修改系统属性');
+          HttpHelper.expectError(modifySystemResponse, BusinessErrors.SYSTEM_PROPERTY_MODIFY_FORBIDDEN.code);
+          expect(modifySystemResponse.body.message).toBe(BusinessErrors.SYSTEM_PROPERTY_MODIFY_FORBIDDEN.error);
         }
       });
 
@@ -244,8 +245,8 @@ describe('Role and Permission Integration Tests', () => {
         if (systemRole) {
           const deleteSystemRoleResponse = await httpClient.delete(`/system/role/${systemRole.id}`);
           
-          HttpHelper.expectError(deleteSystemRoleResponse, 1000);
-          expect(deleteSystemRoleResponse.body.message).toBe('系统角色不能删除');
+          HttpHelper.expectError(deleteSystemRoleResponse, BusinessErrors.SYSTEM_ROLE_DELETE_FORBIDDEN.code);
+          expect(deleteSystemRoleResponse.body.message).toBe(BusinessErrors.SYSTEM_ROLE_DELETE_FORBIDDEN.error);
         }
       });
 
@@ -256,7 +257,7 @@ describe('Role and Permission Integration Tests', () => {
           sort: 'invalid json string'
         });
         
-        HttpHelper.expectError(invalidSortResponse, 1000);
+        HttpHelper.expectError(invalidSortResponse, 9999);
       });
     });
   });
@@ -383,10 +384,10 @@ describe('Role and Permission Integration Tests', () => {
 
         // 测试无效参数
         await expect(casbinService.addAdminPolices('', ['policy1']))
-          .rejects.toBe('角色不能为空');
+          .rejects.toThrow(BusinessErrors.ROLE_IDENTIFIER_EMPTY.error);
 
         await expect(casbinService.addAdminRole('', ['role1']))
-          .rejects.toBe('用户名不能为空');
+          .rejects.toThrow(BusinessErrors.USER_IDENTIFIER_EMPTY.error);
       });
 
       it('should handle permission checks for non-existent entities', async () => {
@@ -526,23 +527,23 @@ describe('Role and Permission Integration Tests', () => {
 
         // 测试空用户名
         await expect(userService.checkNameAndRoles('', ['role1']))
-          .rejects.toThrow('用户标识不能为空');
+          .rejects.toThrow(BusinessErrors.USER_IDENTIFIER_EMPTY.error);
 
         // 测试空角色列表
         await expect(userService.checkNameAndRoles('user1', []))
-          .rejects.toThrow('角色标识列表不能为空');
+          .rejects.toThrow(BusinessErrors.ROLE_LIST_EMPTY.error);
 
         // 测试角色标识为空
         await expect(userService.checkNameAndRoles('user1', ['role1', '']))
-          .rejects.toThrow('角色标识不能为空');
+          .rejects.toThrow(BusinessErrors.ROLE_IDENTIFIER_EMPTY.error);
 
         // 测试角色标识重复
         await expect(userService.checkNameAndRoles('user1', ['role1', 'role1']))
-          .rejects.toThrow('角色标识不能重复');
+          .rejects.toThrow(BusinessErrors.ROLE_IDENTIFIER_DUPLICATE.error);
 
         // 测试用户标识与角色标识重复
         await expect(userService.checkNameAndRoles('user1', ['user1']))
-          .rejects.toThrow('用户标识不能跟角色标识重复');
+          .rejects.toThrow(BusinessErrors.USER_ROLE_CONFLICT.error);
       });
 
       it('should find all users with pagination', async () => {
@@ -616,19 +617,19 @@ describe('Role and Permission Integration Tests', () => {
 
         // 测试空角色代码
         await expect(roleService.checkCodeAndPolicys('', ['policy1']))
-          .rejects.toThrow('角色标识不能为空');
+          .rejects.toThrow(BusinessErrors.ROLE_IDENTIFIER_EMPTY.error);
 
         // 测试空权限列表
         await expect(roleService.checkCodeAndPolicys('role1', []))
-          .rejects.toThrow('权限标识列表不能为空');
+          .rejects.toThrow(BusinessErrors.PERMISSION_LIST_EMPTY.error);
 
         // 测试权限标识为空
         await expect(roleService.checkCodeAndPolicys('role1', ['policy1', '']))
-          .rejects.toThrow('权限标识不能为空');
+          .rejects.toThrow(BusinessErrors.PERMISSION_IDENTIFIER_EMPTY.error);
 
         // 测试权限标识重复
         await expect(roleService.checkCodeAndPolicys('role1', ['policy1', 'policy1']))
-          .rejects.toThrow('权限标识不能重复');
+          .rejects.toThrow(BusinessErrors.PERMISSION_IDENTIFIER_DUPLICATE.error);
       });
 
       it('should find all roles with pagination', async () => {

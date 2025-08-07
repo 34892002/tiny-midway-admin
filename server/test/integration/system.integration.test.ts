@@ -1,6 +1,7 @@
 import { Framework, Application } from '@midwayjs/koa';
 import { createApp, close } from '@midwayjs/mock';
 import { AuthHelper, HttpHelper, DatabaseHelper } from '../__helpers__';
+import { BusinessErrors, SystemErrors } from '../../src/error/admin.error';
 
 /**
  * 系统管理集成测试
@@ -199,8 +200,8 @@ describe('System Management Integration Tests', () => {
       const duplicateResponse = await client.post('/system/resource', menuData);
       
       expect(duplicateResponse.status).toBe(200);
-      expect(duplicateResponse.body.code).toBe(1000);
-      expect(duplicateResponse.body.message).toContain('已经存在');
+      expect(duplicateResponse.body.code).toBe(BusinessErrors.CODE_ALREADY_EXISTS.code);
+      expect(duplicateResponse.body.message).toContain(BusinessErrors.CODE_ALREADY_EXISTS.error);
       
       // 清理创建的菜单
       await client.delete(`/system/resource/${createdMenuId}`);
@@ -338,8 +339,8 @@ describe('System Management Integration Tests', () => {
       const deleteParentResponse = await client.delete(`/system/resource/${parentMenuId}`);
       
       expect(deleteParentResponse.status).toBe(200);
-      expect(deleteParentResponse.body.code).toBe(1000);
-      expect(deleteParentResponse.body.message).toContain('该菜单下有子菜单');
+      expect(deleteParentResponse.body.code).toBe(SystemErrors.MENU_HAS_CHILDREN.code);
+      expect(deleteParentResponse.body.message).toContain(SystemErrors.MENU_HAS_CHILDREN.error);
       
       // 先删除子菜单
       const deleteChildResponse = await client.delete(`/system/resource/${childMenuId}`);
@@ -383,8 +384,8 @@ describe('System Management Integration Tests', () => {
         const deleteResponse = await client.delete(`/system/resource/${testMenuId}`);
         
         expect(deleteResponse.status).toBe(200);
-        expect(deleteResponse.body.code).toBe(1000);
-        expect(deleteResponse.body.message).toContain('演示环境下不能删除菜单');
+        expect(deleteResponse.body.code).toBe(SystemErrors.DEMO_MENU_DELETE_FORBIDDEN.code);
+        expect(deleteResponse.body.message).toContain(SystemErrors.DEMO_MENU_DELETE_FORBIDDEN.error);
       } finally {
         // 恢复原始环境变量
         if (originalEnv !== undefined) {

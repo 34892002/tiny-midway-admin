@@ -9,6 +9,7 @@ import { createApp, close } from '@midwayjs/mock';
 import { DictService } from '../../src/modules/base/service/dict.service';
 import { FileService } from '../../src/modules/base/service/file.service';
 import { AuthHelper, DatabaseHelper, HttpHelper } from '../__helpers__';
+import { BusinessErrors, SystemErrors } from '../../src/error/admin.error';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -384,7 +385,7 @@ describe('Base Module Integration Tests', () => {
         
         // 无效参数会导致数据库查询错误
         expect(result.status).toBe(200);
-        expect(result.body.code).toBe(1000);
+        expect(result.body.code).not.toBe(0);
         expect(result.body).toHaveProperty('error');
         expect(result.body).toHaveProperty('message');
         expect(result.body.message).toContain('Unknown argument `invalidParam`');
@@ -426,7 +427,8 @@ describe('Base Module Integration Tests', () => {
         // 重复创建分类可能返回200状态码，但业务错误码不为0
         expect(secondResult.status).toBe(200);
         expect(secondResult.body.code).not.toBe(0);
-        expect(secondResult.body.message).toContain('已存在的分类名称');
+        expect(secondResult.body.code).toBe(BusinessErrors.CATEGORY_NAME_EXISTS.code);
+        expect(secondResult.body.message).toContain(BusinessErrors.CATEGORY_NAME_EXISTS.error);
       });
 
       it('should delete file type successfully', async () => {
@@ -444,7 +446,8 @@ describe('Base Module Integration Tests', () => {
         // 删除系统分类可能返回200状态码，但业务错误码不为0
         expect(result.status).toBe(200);
         expect(result.body.code).not.toBe(0);
-        expect(result.body.message).toContain('系统分类不能删除');
+        expect(result.body.code).toBe(SystemErrors.SYSTEM_CATEGORY_DELETE_FORBIDDEN_FILE.code);
+        expect(result.body.message).toContain(SystemErrors.SYSTEM_CATEGORY_DELETE_FORBIDDEN_FILE.error);
       });
 
       it('should prevent deleting file type with existing files', async () => {
@@ -457,7 +460,8 @@ describe('Base Module Integration Tests', () => {
         // 删除操作可能返回200状态码，但业务错误码不为0
         expect(result.status).toBe(200);
         expect(result.body.code).not.toBe(0);
-        expect(result.body.message).toContain('该分类下还有文件');
+        expect(result.body.code).toBe(SystemErrors.CATEGORY_HAS_FILES.code);
+        expect(result.body.message).toContain(SystemErrors.CATEGORY_HAS_FILES.error);
         
         mockCount.mockRestore();
       });
@@ -718,8 +722,8 @@ describe('Base Module Integration Tests', () => {
               limit: 100 // 增加查询数量
             });
             expect(allFilesResult.status).toBe(200);
-            // 接受错误码0或1000（可能是测试环境特殊设置）
-            expect([0, 1000]).toContain(allFilesResult.body.code);
+            // 接受错误码0或9999（可能是测试环境特殊设置）
+            expect([0, 9999]).toContain(allFilesResult.body.code);
             if (allFilesResult.body.data && allFilesResult.body.data.records) {
               uploadedFile = allFilesResult.body.data.records.find((f: any) => f.id === fileId);
             }

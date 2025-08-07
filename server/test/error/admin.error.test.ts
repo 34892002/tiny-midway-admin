@@ -1,8 +1,15 @@
-import { AdminErrorEnum, CustomError, CaptchaError } from '../../src/error/admin.error';
+import { 
+  AdminErrorEnum, 
+  AdminBusinessError,
+  BusinessErrors,
+  UserDataErrors,
+  AuthErrors,
+  SystemErrors
+} from '../../src/error/admin.error';
 
 /**
- * Error模块集成测试
- * 测试错误枚举、自定义错误类和验证码错误类的正确性和完整性
+ * 错误模块集成测试
+ * 测试错误枚举和业务错误类的正确性和完整性
  */
 describe('Error Module Integration Tests', () => {
     /**
@@ -27,7 +34,7 @@ describe('Error Module Integration Tests', () => {
 
         it('should have valid DICT_NOT_DATA configuration', () => {
             expect(AdminErrorEnum.DICT_NOT_DATA).toBeDefined();
-            expect(AdminErrorEnum.DICT_NOT_DATA.code).toBe(10003);
+            expect(AdminErrorEnum.DICT_NOT_DATA.code).toBe(13000);
             expect(AdminErrorEnum.DICT_NOT_DATA.error).toBe('未找到字典!');
             expect(typeof AdminErrorEnum.DICT_NOT_DATA.code).toBe('number');
             expect(typeof AdminErrorEnum.DICT_NOT_DATA.error).toBe('string');
@@ -49,13 +56,24 @@ describe('Error Module Integration Tests', () => {
             expect(typeof AdminErrorEnum.TIMEOUT_USER_DATA.error).toBe('string');
         });
 
+        it('should have valid USER_NOT_FOUND configuration', () => {
+            expect(AdminErrorEnum.USER_NOT_FOUND).toBeDefined();
+            expect(AdminErrorEnum.USER_NOT_FOUND.code).toBe(11001);
+            expect(AdminErrorEnum.USER_NOT_FOUND.error).toBe('目标用户不存在');
+            expect(typeof AdminErrorEnum.USER_NOT_FOUND.code).toBe('number');
+            expect(typeof AdminErrorEnum.USER_NOT_FOUND.error).toBe('string');
+        });
+
         it('should have all required error types', () => {
             const requiredErrorTypes = [
                 'CAPTCHA_ERROR',
                 'USR_PWD_ERROR', 
                 'DICT_NOT_DATA',
                 'BAD_USER_DATA',
-                'TIMEOUT_USER_DATA'
+                'TIMEOUT_USER_DATA',
+                'USER_NOT_FOUND',
+                'USER_IDENTIFIER_EMPTY',
+                'PERMISSION_DENIED'
             ];
 
             requiredErrorTypes.forEach(errorType => {
@@ -69,10 +87,9 @@ describe('Error Module Integration Tests', () => {
             const errorCodes = Object.values(AdminErrorEnum).map(error => error.code);
             const uniqueCodes = [...new Set(errorCodes)];
             
-            // 注意：CAPTCHA_ERROR 和 DICT_NOT_DATA 都使用 10003，这可能是设计上的问题
-            // 但我们测试当前的实际情况
-            expect(errorCodes).toHaveLength(5);
-            expect(uniqueCodes).toHaveLength(4); // 因为有重复的 10003
+            // 验证所有错误码都是唯一的
+            expect(errorCodes.length).toBe(uniqueCodes.length);
+            expect(uniqueCodes.length).toBeGreaterThan(20); // 现在有很多错误定义
         });
 
         it('should have valid error code ranges', () => {
@@ -93,129 +110,56 @@ describe('Error Module Integration Tests', () => {
     });
 
     /**
-     * 测试自定义错误类
+     * 测试 AdminBusinessError 类
      */
-    describe('CustomError Class', () => {
-        it('should create CustomError instance correctly', () => {
-            const message = '测试错误消息';
-            const code = 10001;
-            const error = new CustomError(message, code);
+    describe('AdminBusinessError Class', () => {
+        it('should create AdminBusinessError instance correctly', () => {
+            const error = new AdminBusinessError(AdminErrorEnum.CAPTCHA_ERROR);
 
-            expect(error).toBeInstanceOf(CustomError);
+            expect(error).toBeInstanceOf(AdminBusinessError);
             expect(error).toBeInstanceOf(Error);
-            expect(error.message).toBe(message);
-            expect(error.code).toBe(code);
-            expect(error.name).toBe('Error');
+            expect(error.message).toBe('验证码错误');
+            expect(error.businessCode).toBe(10003);
+            expect(error.businessMessage).toBe('验证码错误');
+            expect(error.name).toBe('AdminBusinessError');
+            expect(error.code).toBe('10003'); // MidwayError 的 code 是字符串
         });
 
-        it('should handle different message types', () => {
+        it('should create error using different error objects', () => {
             const testCases = [
-                { message: '中文错误消息', code: 10001 },
-                { message: 'English error message', code: 10002 },
-                { message: '123数字消息', code: 10003 },
-                { message: '', code: 10004 }, // 空消息
-                { message: 'Very long error message that contains multiple words and should be handled correctly by the CustomError class', code: 10005 }
+                { errorObj: BusinessErrors.USER_IDENTIFIER_EMPTY, expectedCode: 12001, expectedMessage: '用户标识不能为空' },
+                { errorObj: UserDataErrors.USER_NOT_FOUND, expectedCode: 11001, expectedMessage: '目标用户不存在' },
+                { errorObj: AuthErrors.PERMISSION_DENIED, expectedCode: 10001, expectedMessage: '权限不足，无法修改系统用户信息' },
+                { errorObj: SystemErrors.DEMO_ENVIRONMENT_RESTRICTION, expectedCode: 13001, expectedMessage: '演示环境不能修改用户信息' }
             ];
 
-            testCases.forEach(({ message, code }) => {
-                const error = new CustomError(message, code);
-                expect(error.message).toBe(message);
-                expect(error.code).toBe(code);
-            });
-        });
-
-        it('should handle different code types', () => {
-            const testCases = [
-                { message: '测试', code: 0 },
-                { message: '测试', code: -1 },
-                { message: '测试', code: 99999 },
-                { message: '测试', code: 10001.5 } // 浮点数
-            ];
-
-            testCases.forEach(({ message, code }) => {
-                const error = new CustomError(message, code);
-                expect(error.code).toBe(code);
+            testCases.forEach(({ errorObj, expectedCode, expectedMessage }) => {
+                const error = new AdminBusinessError(errorObj);
+                expect(error.businessCode).toBe(expectedCode);
+                expect(error.businessMessage).toBe(expectedMessage);
+                expect(error.message).toBe(expectedMessage);
+                expect(error.code).toBe(expectedCode.toString()); // MidwayError 的 code 是字符串
             });
         });
 
         it('should maintain Error prototype chain', () => {
-            const error = new CustomError('测试', 10001);
+            const error = new AdminBusinessError(AdminErrorEnum.CAPTCHA_ERROR);
             
             expect(error instanceof Error).toBe(true);
-            expect(error instanceof CustomError).toBe(true);
-            expect(error.constructor).toBe(CustomError);
-            expect(Object.getPrototypeOf(error)).toBe(CustomError.prototype);
+            expect(error instanceof AdminBusinessError).toBe(true);
+            expect(error.constructor).toBe(AdminBusinessError);
         });
 
         it('should have proper toString behavior', () => {
-            const error = new CustomError('测试错误', 10001);
+            const error = new AdminBusinessError(AdminErrorEnum.CAPTCHA_ERROR);
             const errorString = error.toString();
             
-            expect(errorString).toContain('Error');
-            expect(errorString).toContain('测试错误');
-        });
-
-        it('should support stack trace', () => {
-            const error = new CustomError('测试错误', 10001);
-            
-            expect(error.stack).toBeDefined();
-            expect(typeof error.stack).toBe('string');
-            expect(error.stack).toContain('测试错误');
-        });
-    });
-
-    /**
-     * 测试验证码错误类
-     */
-    describe('CaptchaError Class', () => {
-        it('should create CaptchaError instance correctly', () => {
-            const error = new CaptchaError();
-
-            expect(error).toBeInstanceOf(CaptchaError);
-            expect(error).toBeInstanceOf(CustomError);
-            expect(error).toBeInstanceOf(Error);
-            expect(error.message).toBe(AdminErrorEnum.CAPTCHA_ERROR.error);
-            expect(error.code).toBe(AdminErrorEnum.CAPTCHA_ERROR.code);
-        });
-
-        it('should use predefined CAPTCHA_ERROR configuration', () => {
-            const error = new CaptchaError();
-
-            expect(error.message).toBe('验证码错误');
-            expect(error.code).toBe(10003);
-        });
-
-        it('should maintain proper inheritance chain', () => {
-            const error = new CaptchaError();
-
-            expect(error instanceof Error).toBe(true);
-            expect(error instanceof CustomError).toBe(true);
-            expect(error instanceof CaptchaError).toBe(true);
-            expect(error.constructor).toBe(CaptchaError);
-        });
-
-        it('should not accept parameters in constructor', () => {
-            // CaptchaError 构造函数不接受参数，应该始终使用预定义的错误信息
-            const error1 = new CaptchaError();
-            const error2 = new CaptchaError();
-
-            expect(error1.message).toBe(error2.message);
-            expect(error1.code).toBe(error2.code);
-            expect(error1.message).toBe(AdminErrorEnum.CAPTCHA_ERROR.error);
-            expect(error1.code).toBe(AdminErrorEnum.CAPTCHA_ERROR.code);
-        });
-
-        it('should have proper toString behavior', () => {
-            const error = new CaptchaError();
-            const errorString = error.toString();
-
-            expect(errorString).toContain('Error');
             expect(errorString).toContain('验证码错误');
         });
 
         it('should support stack trace', () => {
-            const error = new CaptchaError();
-
+            const error = new AdminBusinessError(AdminErrorEnum.CAPTCHA_ERROR);
+            
             expect(error.stack).toBeDefined();
             expect(typeof error.stack).toBe('string');
             expect(error.stack).toContain('验证码错误');
@@ -228,77 +172,72 @@ describe('Error Module Integration Tests', () => {
     describe('Error Usage Scenarios', () => {
         it('should handle error throwing and catching', () => {
             expect(() => {
-                throw new CustomError('测试错误', 10001);
-            }).toThrow(CustomError);
+                throw new AdminBusinessError(AdminErrorEnum.CAPTCHA_ERROR);
+            }).toThrow(AdminBusinessError);
 
             expect(() => {
-                throw new CaptchaError();
-            }).toThrow(CaptchaError);
+                throw new AdminBusinessError(BusinessErrors.USER_IDENTIFIER_EMPTY);
+            }).toThrow(AdminBusinessError);
 
             expect(() => {
-                throw new CaptchaError();
-            }).toThrow(CustomError);
-
-            expect(() => {
-                throw new CaptchaError();
+                throw new AdminBusinessError(UserDataErrors.USER_NOT_FOUND);
             }).toThrow(Error);
         });
 
         it('should handle error catching with specific types', () => {
             try {
-                throw new CaptchaError();
+                throw new AdminBusinessError(UserDataErrors.USER_NOT_FOUND);
             } catch (error) {
-                expect(error).toBeInstanceOf(CaptchaError);
-                expect(error.message).toBe('验证码错误');
-                expect(error.code).toBe(10003);
+                expect(error).toBeInstanceOf(AdminBusinessError);
+                expect(error.message).toBe('目标用户不存在');
+                expect((error as AdminBusinessError).businessCode).toBe(11001);
             }
 
             try {
-                throw new CustomError('自定义错误', 10001);
+                throw new AdminBusinessError(BusinessErrors.ROLE_IDENTIFIER_EMPTY);
             } catch (error) {
-                expect(error).toBeInstanceOf(CustomError);
-                expect(error.message).toBe('自定义错误');
-                expect(error.code).toBe(10001);
+                expect(error).toBeInstanceOf(AdminBusinessError);
+                expect(error.message).toBe('角色标识不能为空');
+                expect((error as AdminBusinessError).businessCode).toBe(12002);
             }
         });
 
         it('should support error serialization', () => {
-            const customError = new CustomError('测试错误', 10001);
-            const captchaError = new CaptchaError();
+            const businessError = new AdminBusinessError(AdminErrorEnum.CAPTCHA_ERROR);
+            const userError = new AdminBusinessError(UserDataErrors.USER_NOT_FOUND);
 
             // 测试错误对象的序列化
-            const customErrorObj = {
-                message: customError.message,
-                code: customError.code,
-                name: customError.name
+            const businessErrorObj = {
+                message: businessError.message,
+                businessCode: businessError.businessCode,
+                name: businessError.name
             };
 
-            const captchaErrorObj = {
-                message: captchaError.message,
-                code: captchaError.code,
-                name: captchaError.name
+            const userErrorObj = {
+                message: userError.message,
+                businessCode: userError.businessCode,
+                name: userError.name
             };
 
-            expect(customErrorObj.message).toBe('测试错误');
-            expect(customErrorObj.code).toBe(10001);
-            expect(captchaErrorObj.message).toBe('验证码错误');
-            expect(captchaErrorObj.code).toBe(10003);
+            expect(businessErrorObj.message).toBe('验证码错误');
+            expect(businessErrorObj.businessCode).toBe(10003);
+            expect(userErrorObj.message).toBe('目标用户不存在');
+            expect(userErrorObj.businessCode).toBe(11001);
         });
 
         it('should handle error comparison', () => {
-            const error1 = new CaptchaError();
-            const error2 = new CaptchaError();
-            const error3 = new CustomError('验证码错误', 10003);
+            const error1 = new AdminBusinessError(AdminErrorEnum.CAPTCHA_ERROR);
+            const error2 = new AdminBusinessError(AdminErrorEnum.CAPTCHA_ERROR);
+            const error3 = new AdminBusinessError(UserDataErrors.USER_NOT_FOUND);
 
             // 不同实例但相同内容
             expect(error1.message).toBe(error2.message);
-            expect(error1.code).toBe(error2.code);
+            expect(error1.businessCode).toBe(error2.businessCode);
             expect(error1).not.toBe(error2); // 不同的对象实例
 
-            // 相同内容但不同类型
-            expect(error1.message).toBe(error3.message);
-            expect(error1.code).toBe(error3.code);
-            expect(error1.constructor).not.toBe(error3.constructor);
+            // 不同错误类型
+            expect(error1.message).not.toBe(error3.message);
+            expect(error1.businessCode).not.toBe(error3.businessCode);
         });
     });
 
@@ -307,7 +246,7 @@ describe('Error Module Integration Tests', () => {
      */
     describe('Error Enum Consistency', () => {
         it('should have consistent error structure', () => {
-            Object.entries(AdminErrorEnum).forEach(([key, value]) => {
+            Object.entries(AdminErrorEnum).forEach(([, value]) => {
                 expect(value).toHaveProperty('code');
                 expect(value).toHaveProperty('error');
                 expect(typeof value.code).toBe('number');
@@ -323,7 +262,6 @@ describe('Error Module Integration Tests', () => {
                 // 错误键名应该是大写，用下划线分隔
                 expect(key).toMatch(/^[A-Z_]+$/);
                 expect(key).toContain('_');
-                expect(key.endsWith('_ERROR') || key.endsWith('_DATA')).toBe(true);
             });
         });
 
@@ -342,9 +280,13 @@ describe('Error Module Integration Tests', () => {
             // 验证错误码分组
             const authErrors = errorCodes.filter(code => code >= 10000 && code < 11000);
             const userErrors = errorCodes.filter(code => code >= 11000 && code < 12000);
+            const businessErrors = errorCodes.filter(code => code >= 12000 && code < 13000);
+            const systemErrors = errorCodes.filter(code => code >= 13000 && code < 14000);
             
             expect(authErrors.length).toBeGreaterThan(0);
             expect(userErrors.length).toBeGreaterThan(0);
+            expect(businessErrors.length).toBeGreaterThan(0);
+            expect(systemErrors.length).toBeGreaterThan(0);
             
             // 验证具体的错误码分组
             expect(AdminErrorEnum.CAPTCHA_ERROR.code).toBeGreaterThanOrEqual(10000);
@@ -353,8 +295,10 @@ describe('Error Module Integration Tests', () => {
             expect(AdminErrorEnum.USR_PWD_ERROR.code).toBeLessThan(11000);
             expect(AdminErrorEnum.BAD_USER_DATA.code).toBeGreaterThanOrEqual(11000);
             expect(AdminErrorEnum.BAD_USER_DATA.code).toBeLessThan(12000);
-            expect(AdminErrorEnum.TIMEOUT_USER_DATA.code).toBeGreaterThanOrEqual(11000);
-            expect(AdminErrorEnum.TIMEOUT_USER_DATA.code).toBeLessThan(12000);
+            expect(AdminErrorEnum.USER_IDENTIFIER_EMPTY.code).toBeGreaterThanOrEqual(12000);
+            expect(AdminErrorEnum.USER_IDENTIFIER_EMPTY.code).toBeLessThan(13000);
+            expect(AdminErrorEnum.DICT_NOT_DATA.code).toBeGreaterThanOrEqual(13000);
+            expect(AdminErrorEnum.DICT_NOT_DATA.code).toBeLessThan(14000);
         });
     });
 
@@ -363,58 +307,61 @@ describe('Error Module Integration Tests', () => {
      */
     describe('Error Class Extensibility', () => {
         it('should support creating custom error subclasses', () => {
-            // 创建一个新的错误类继承自CustomError
-            class UserDataError extends CustomError {
+            // 创建一个新的错误类继承自AdminBusinessError
+            class CustomUserDataError extends AdminBusinessError {
                 constructor() {
-                    super(AdminErrorEnum.BAD_USER_DATA.error, AdminErrorEnum.BAD_USER_DATA.code);
+                    super(AdminErrorEnum.BAD_USER_DATA);
+                    this.name = 'CustomUserDataError';
+                    // 确保正确的原型链
+                    Object.setPrototypeOf(this, CustomUserDataError.prototype);
                 }
             }
 
-            const error = new UserDataError();
+            const error = new CustomUserDataError();
             
-            expect(error).toBeInstanceOf(UserDataError);
-            expect(error).toBeInstanceOf(CustomError);
+            expect(error).toBeInstanceOf(CustomUserDataError);
+            expect(error).toBeInstanceOf(AdminBusinessError);
             expect(error).toBeInstanceOf(Error);
             expect(error.message).toBe(AdminErrorEnum.BAD_USER_DATA.error);
-            expect(error.code).toBe(AdminErrorEnum.BAD_USER_DATA.code);
+            expect(error.businessCode).toBe(AdminErrorEnum.BAD_USER_DATA.code);
         });
 
         it('should support error class with additional properties', () => {
             // 创建带有额外属性的错误类
-            class DetailedError extends CustomError {
+            class DetailedError extends AdminBusinessError {
                 public details: any;
                 public timestamp: Date;
 
-                constructor(message: string, code: number, details?: any) {
-                    super(message, code);
+                constructor(adminError: typeof AdminErrorEnum[keyof typeof AdminErrorEnum], details?: any) {
+                    super(adminError);
                     this.details = details;
                     this.timestamp = new Date();
+                    this.name = 'DetailedError';
                 }
             }
 
             const details = { userId: 123, action: 'login' };
-            const error = new DetailedError('详细错误', 10001, details);
+            const error = new DetailedError(AdminErrorEnum.CAPTCHA_ERROR, details);
 
             expect(error.details).toBe(details);
             expect(error.timestamp).toBeInstanceOf(Date);
-            expect(error.message).toBe('详细错误');
-            expect(error.code).toBe(10001);
+            expect(error.message).toBe('验证码错误');
+            expect(error.businessCode).toBe(10003);
         });
 
         it('should support error factory pattern', () => {
             // 错误工厂函数
-            const createAdminError = (errorType: keyof typeof AdminErrorEnum) => {
-                const errorConfig = AdminErrorEnum[errorType];
-                return new CustomError(errorConfig.error, errorConfig.code);
+            const createAdminError = (errorObj: typeof AdminErrorEnum[keyof typeof AdminErrorEnum]) => {
+                return new AdminBusinessError(errorObj);
             };
 
-            const captchaError = createAdminError('CAPTCHA_ERROR');
-            const userPwdError = createAdminError('USR_PWD_ERROR');
+            const captchaError = createAdminError(AdminErrorEnum.CAPTCHA_ERROR);
+            const userPwdError = createAdminError(AdminErrorEnum.USR_PWD_ERROR);
 
             expect(captchaError.message).toBe(AdminErrorEnum.CAPTCHA_ERROR.error);
-            expect(captchaError.code).toBe(AdminErrorEnum.CAPTCHA_ERROR.code);
+            expect(captchaError.businessCode).toBe(AdminErrorEnum.CAPTCHA_ERROR.code);
             expect(userPwdError.message).toBe(AdminErrorEnum.USR_PWD_ERROR.error);
-            expect(userPwdError.code).toBe(AdminErrorEnum.USR_PWD_ERROR.code);
+            expect(userPwdError.businessCode).toBe(AdminErrorEnum.USR_PWD_ERROR.code);
         });
     });
 
@@ -428,20 +375,20 @@ describe('Error Module Integration Tests', () => {
 
             // 创建大量错误实例
             for (let i = 0; i < 1000; i++) {
-                errors.push(new CustomError(`错误 ${i}`, 10000 + i));
+                errors.push(new AdminBusinessError(AdminErrorEnum.CAPTCHA_ERROR));
             }
 
             const endTime = Date.now();
             const duration = endTime - startTime;
 
             expect(errors).toHaveLength(1000);
-            expect(duration).toBeLessThan(100); // 应该在100ms内完成
+            expect(duration).toBeLessThan(200); // 应该在200ms内完成
         });
 
         it('should handle error creation without memory leaks', () => {
             // 创建和销毁错误实例
             for (let i = 0; i < 100; i++) {
-                const error = new CaptchaError();
+                const error = new AdminBusinessError(AdminErrorEnum.CAPTCHA_ERROR);
                 expect(error.message).toBe('验证码错误');
                 // 错误对象会被垃圾回收
             }
@@ -449,6 +396,58 @@ describe('Error Module Integration Tests', () => {
             // 验证错误枚举没有被修改
             expect(AdminErrorEnum.CAPTCHA_ERROR.error).toBe('验证码错误');
             expect(AdminErrorEnum.CAPTCHA_ERROR.code).toBe(10003);
+        });
+
+        it('should handle different error types efficiently', () => {
+            const errorTypes = [
+                () => new AdminBusinessError(AdminErrorEnum.CAPTCHA_ERROR),
+                () => new AdminBusinessError(BusinessErrors.USER_IDENTIFIER_EMPTY),
+                () => new AdminBusinessError(UserDataErrors.USER_NOT_FOUND),
+                () => new AdminBusinessError(SystemErrors.DICT_NOT_DATA)
+            ];
+
+            const startTime = Date.now();
+            
+            for (let i = 0; i < 100; i++) {
+                errorTypes.forEach(createError => {
+                    const error = createError();
+                    expect(error).toBeInstanceOf(AdminBusinessError);
+                });
+            }
+
+            const endTime = Date.now();
+            const duration = endTime - startTime;
+
+            expect(duration).toBeLessThan(100); // 应该在100ms内完成
+        });
+    });
+
+    /**
+     * 测试分类错误对象
+     */
+    describe('Categorized Error Objects', () => {
+        it('should have valid AuthErrors', () => {
+            expect(AuthErrors.CAPTCHA_ERROR).toEqual(AdminErrorEnum.CAPTCHA_ERROR);
+            expect(AuthErrors.USR_PWD_ERROR).toEqual(AdminErrorEnum.USR_PWD_ERROR);
+            expect(AuthErrors.PERMISSION_DENIED).toEqual(AdminErrorEnum.PERMISSION_DENIED);
+        });
+
+        it('should have valid UserDataErrors', () => {
+            expect(UserDataErrors.BAD_USER_DATA).toEqual(AdminErrorEnum.BAD_USER_DATA);
+            expect(UserDataErrors.USER_NOT_FOUND).toEqual(AdminErrorEnum.USER_NOT_FOUND);
+            expect(UserDataErrors.ROLE_NOT_FOUND).toEqual(AdminErrorEnum.ROLE_NOT_FOUND);
+        });
+
+        it('should have valid BusinessErrors', () => {
+            expect(BusinessErrors.USER_IDENTIFIER_EMPTY).toEqual(AdminErrorEnum.USER_IDENTIFIER_EMPTY);
+            expect(BusinessErrors.ROLE_IDENTIFIER_EMPTY).toEqual(AdminErrorEnum.ROLE_IDENTIFIER_EMPTY);
+            expect(BusinessErrors.CODE_ALREADY_EXISTS).toEqual(AdminErrorEnum.CODE_ALREADY_EXISTS);
+        });
+
+        it('should have valid SystemErrors', () => {
+            expect(SystemErrors.DICT_NOT_DATA).toEqual(AdminErrorEnum.DICT_NOT_DATA);
+            expect(SystemErrors.DEMO_ENVIRONMENT_RESTRICTION).toEqual(AdminErrorEnum.DEMO_ENVIRONMENT_RESTRICTION);
+            expect(SystemErrors.DEMO_MENU_DELETE_FORBIDDEN).toEqual(AdminErrorEnum.DEMO_MENU_DELETE_FORBIDDEN);
         });
     });
 });

@@ -3,6 +3,7 @@ import { createApp, close } from '@midwayjs/mock';
 import { AuthHelper, HttpHelper, DatabaseHelper, MockHelper } from '../__helpers__';
 import { UserService } from '../../src/modules/system/service/user.service';
 import { UserService as BaseUserService } from '../../src/modules/base/service/user.service';
+import { BusinessErrors, AuthErrors, SystemErrors, UserDataErrors } from '../../src/error/admin.error';
 
 /**
  * 用户管理集成测试
@@ -71,7 +72,7 @@ describe('User Management Integration Tests', () => {
         email: 'e2etest@example.com',
         phone: '13800138000',
         system: false,
-        roles: ['admin']
+        roles: ['business_role']
       };
 
       const createResponse = await http.post('/system/user', createUserData);
@@ -101,7 +102,7 @@ describe('User Management Integration Tests', () => {
         email: 'updated_e2etest@example.com',
         phone: '13900139000',
         system: false,
-        roles: ['admin']
+        roles: ['business_role']
       };
 
       const updateResponse = await http.put(`/system/user/${testUserId}`, updateUserData);
@@ -181,8 +182,8 @@ describe('User Management Integration Tests', () => {
         });
 
         expect(updateSystemUserResponse.status).toBe(200);
-        expect(updateSystemUserResponse.body.code).toBe(1000);
-        expect(updateSystemUserResponse.body.message).toContain('演示环境不能修改Root用户');
+        expect(updateSystemUserResponse.body.code).toBe(SystemErrors.DEMO_ENVIRONMENT_RESTRICTION.code);
+        expect(updateSystemUserResponse.body.message).toContain(SystemErrors.DEMO_ENVIRONMENT_RESTRICTION.error);
       } finally {
         // 恢复原始环境变量
         if (originalEnv !== undefined) {
@@ -205,8 +206,8 @@ describe('User Management Integration Tests', () => {
       });
 
       expect(invalidRoleResponse.status).toBe(200);
-      expect(invalidRoleResponse.body.code).toBe(1000);
-      expect(invalidRoleResponse.body.message).toContain('角色标识不符合规则');
+      expect(invalidRoleResponse.body.code).toBe(BusinessErrors.ROLE_IDENTIFIER_INVALID.code);
+      expect(invalidRoleResponse.body.message).toContain(BusinessErrors.ROLE_IDENTIFIER_INVALID.error);
 
       // 测试用户标识与现有角色标识重复
       const testUsername = 'admin_role_test_' + Date.now();
@@ -220,8 +221,8 @@ describe('User Management Integration Tests', () => {
       });
 
       expect(duplicateRoleResponse.status).toBe(200);
-      expect(duplicateRoleResponse.body.code).toBe(1000);
-      expect(duplicateRoleResponse.body.message).toContain('用户标识不能跟角色标识重复');
+      expect(duplicateRoleResponse.body.code).toBe(BusinessErrors.USER_ROLE_CONFLICT.code);
+      expect(duplicateRoleResponse.body.message).toContain(BusinessErrors.USER_ROLE_CONFLICT.error);
 
       // 测试角色标识与权限标识重复
       const policyConflictResponse = await http.post('/system/user', {
@@ -234,8 +235,8 @@ describe('User Management Integration Tests', () => {
       });
 
       expect(policyConflictResponse.status).toBe(200);
-      expect(policyConflictResponse.body.code).toBe(1000);
-      expect(policyConflictResponse.body.message).toContain('角色标识不能跟权限标识重复');
+      expect(policyConflictResponse.body.code).toBe(BusinessErrors.ROLE_PERMISSION_CONFLICT.code);
+      expect(policyConflictResponse.body.message).toContain(BusinessErrors.ROLE_PERMISSION_CONFLICT.error);
     });
 
     it('should test user update error handling', async () => {
@@ -244,12 +245,12 @@ describe('User Management Integration Tests', () => {
         username: 'admin',
         nickName: '管理员',
         system: false, // 尝试修改系统属性
-        roles: ['admin']
+        roles: ['business_role']
       });
 
       expect(systemPropertyResponse.status).toBe(200);
-      expect(systemPropertyResponse.body.code).toBe(1000);
-      expect(systemPropertyResponse.body.message).toContain('用户不能修改系统属性');
+      expect(systemPropertyResponse.body.code).toBe(AuthErrors.PERMISSION_DENIED.code);
+      expect(systemPropertyResponse.body.message).toContain(AuthErrors.PERMISSION_DENIED.error);
 
       // 测试系统用户修改角色
       const systemUserRoleResponse = await http.put('/system/user/1', {
@@ -260,8 +261,8 @@ describe('User Management Integration Tests', () => {
       });
 
       expect(systemUserRoleResponse.status).toBe(200);
-      expect(systemUserRoleResponse.body.code).toBe(1000);
-      expect(systemUserRoleResponse.body.message).toContain('系统用户不能修改角色');
+      expect(systemUserRoleResponse.body.code).toBe(AuthErrors.PERMISSION_DENIED.code);
+      expect(systemUserRoleResponse.body.message).toContain(AuthErrors.PERMISSION_DENIED.error);
     });
 
     it('should test user deletion error handling', async () => {
@@ -269,8 +270,8 @@ describe('User Management Integration Tests', () => {
       const deleteSystemUserResponse = await http.delete('/system/user/1');
 
       expect(deleteSystemUserResponse.status).toBe(200);
-      expect(deleteSystemUserResponse.body.code).toBe(1000);
-      expect(deleteSystemUserResponse.body.message).toContain('系统用户不能删除');
+      expect(deleteSystemUserResponse.body.code).toBe(BusinessErrors.SYSTEM_USER_DELETE_FORBIDDEN.code);
+      expect(deleteSystemUserResponse.body.message).toContain(BusinessErrors.SYSTEM_USER_DELETE_FORBIDDEN.error);
     });
 
     it('should test user list pagination and sorting', async () => {
@@ -332,9 +333,9 @@ describe('User Management Integration Tests', () => {
 
       expect(result.status).toBe(200);
       expect(result.body).toHaveProperty('code');
-      expect(result.body.code).toBe(11007);
+      expect(result.body.code).toBe(UserDataErrors.BAD_USER_DATA.code);
       expect(result.body).toHaveProperty('message');
-      expect(result.body.message).toBe('用户数据异常!');
+      expect(result.body.message).toBe(UserDataErrors.BAD_USER_DATA.error);
 
       mockFindUnique.mockRestore();
     });
@@ -357,9 +358,9 @@ describe('User Management Integration Tests', () => {
 
       expect(result.status).toBe(200);
       expect(result.body).toHaveProperty('code');
-      expect(result.body.code).toBe(11008);
+      expect(result.body.code).toBe(UserDataErrors.TIMEOUT_USER_DATA.code);
       expect(result.body).toHaveProperty('message');
-      expect(result.body.message).toBe('用户数据已更新');
+      expect(result.body.message).toBe(UserDataErrors.TIMEOUT_USER_DATA.error);
     });
 
     it('should return menu list successfully', async () => {
@@ -538,7 +539,7 @@ describe('User Management Integration Tests', () => {
       try {
         await systemUserService.checkNameAndRoles('testuser', null);
       } catch (error: any) {
-        expect(error.message).toBe('角色标识列表不能为空');
+        expect(error.message).toBe(BusinessErrors.ROLE_LIST_EMPTY.error);
       }
     });
   });
@@ -600,7 +601,7 @@ describe('User Management Integration Tests', () => {
         nickName: '不完整的用户',
         email: 'incomplete@example.com',
         system: false,
-        roles: ['admin']
+        roles: ['business_role']
       };
 
       const result = await http.post('/system/user', incompleteUserData);
@@ -617,7 +618,7 @@ describe('User Management Integration Tests', () => {
         nickName: '原始用户',
         email: 'original@example.com',
         system: false,
-        roles: ['admin']
+        roles: ['business_role']
       };
 
       const createResult = await http.post('/system/user', originalUserData);
@@ -631,7 +632,7 @@ describe('User Management Integration Tests', () => {
         nickName: '重复用户',
         email: 'duplicate@example.com',
         system: false,
-        roles: ['admin']
+        roles: ['business_role']
       };
 
       const result = await http.post('/system/user', duplicateUserData);
@@ -752,8 +753,8 @@ describe('User Management Integration Tests', () => {
       });
 
       expect(invalidUpdateResponse.status).toBe(200);
-      expect(invalidUpdateResponse.body.code).toBe(1000);
-      expect(invalidUpdateResponse.body.message).toContain('角色标识不符合规则');
+      expect(invalidUpdateResponse.body.code).toBe(BusinessErrors.ROLE_IDENTIFIER_INVALID.code);
+      expect(invalidUpdateResponse.body.message).toContain(BusinessErrors.ROLE_IDENTIFIER_INVALID.error);
 
       // 清理测试数据
       await http.delete(`/system/user/${userId}`);

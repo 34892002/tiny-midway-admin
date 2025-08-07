@@ -7,11 +7,31 @@
 import { Framework, Application } from '@midwayjs/koa';
 import { createApp, close } from '@midwayjs/mock';
 import { CasbinService } from '../../src/modules/base/service/casbin.service';
-import { CasbinGuard, RuleAction, RulePossession, RuleResource } from '../../src/guard/casbin';
+import { CasbinGuard } from '../../src/guard/casbin';
 import { Context } from '@midwayjs/koa';
 import { savePropertyMetadata } from '@midwayjs/core';
 import { ACCESS_META_KEY } from '../../src/decorator/access';
 import { DatabaseHelper } from '../__helpers__';
+import { BusinessErrors } from '../../src/error/admin.error';
+
+// 定义权限相关的枚举类型
+enum RuleAction {
+  READ = 'read',
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete'
+}
+
+enum RulePossession {
+  ANY = 'any',
+  OWN = 'own'
+}
+
+enum RuleResource {
+  PROJECT_DATA = 'project_obj',
+  SHCEMA_DATA = 'shcema_obj',
+  USER_DATA = 'user_obj'
+}
 
 describe('Casbin Permission Management Integration Tests', () => {
   // 设置测试环境
@@ -76,7 +96,7 @@ describe('Casbin Permission Management Integration Tests', () => {
       });
 
       it('should reject when role is empty', async () => {
-        await expect(casbinService.addAdminPolices('', ['test_code'])).rejects.toMatch('角色不能为空');
+        await expect(casbinService.addAdminPolices('', ['test_code'])).rejects.toThrow(BusinessErrors.ROLE_IDENTIFIER_EMPTY.error);
       });
 
       it('should return true when codes array is empty', async () => {
@@ -90,7 +110,7 @@ describe('Casbin Permission Management Integration Tests', () => {
       });
 
       it('should reject when role is empty for remove policy', async () => {
-        await expect(casbinService.removeAdminPolicy('', ['test_code'])).rejects.toMatch('角色不能为空');
+        await expect(casbinService.removeAdminPolicy('', ['test_code'])).rejects.toThrow(BusinessErrors.ROLE_IDENTIFIER_EMPTY.error);
       });
 
       it('should return true when removing empty codes array', async () => {
@@ -116,7 +136,7 @@ describe('Casbin Permission Management Integration Tests', () => {
       });
 
       it('should reject when username is empty', async () => {
-        await expect(casbinService.addAdminRole('', ['TEST_ROLE'])).rejects.toMatch('用户名不能为空');
+        await expect(casbinService.addAdminRole('', ['TEST_ROLE'])).rejects.toThrow(BusinessErrors.USER_IDENTIFIER_EMPTY.error);
       });
 
       it('should return true when roles array is empty', async () => {
@@ -130,7 +150,7 @@ describe('Casbin Permission Management Integration Tests', () => {
       });
 
       it('should reject when username is empty for remove', async () => {
-        await expect(casbinService.removeAdminRole('', ['TEST_ROLE'])).rejects.toMatch('用户名不能为空');
+        await expect(casbinService.removeAdminRole('', ['TEST_ROLE'])).rejects.toThrow(BusinessErrors.USER_IDENTIFIER_EMPTY.error);
       });
 
       it('should return true when removing empty roles array', async () => {
@@ -190,7 +210,7 @@ describe('Casbin Permission Management Integration Tests', () => {
       });
 
       it('should reject when v0 is empty', async () => {
-        await expect(casbinService.clearDBRulesByV0('p', '')).rejects.toMatch('name标识不能为空');
+        await expect(casbinService.clearDBRulesByV0('p', '')).rejects.toThrow(BusinessErrors.USER_IDENTIFIER_EMPTY.error);
       });
 
       it('should clear DB rules by v1', async () => {
@@ -198,7 +218,7 @@ describe('Casbin Permission Management Integration Tests', () => {
       });
 
       it('should reject when v1 is empty', async () => {
-        await expect(casbinService.clearDBRulesByV1('p', '')).rejects.toMatch('code标识不能为空');
+        await expect(casbinService.clearDBRulesByV1('p', '')).rejects.toThrow(BusinessErrors.PERMISSION_IDENTIFIER_EMPTY.error);
       });
     });
 
@@ -411,10 +431,10 @@ describe('Casbin Permission Management Integration Tests', () => {
       it('should handle enforcer.enforce returning non-boolean', async () => {
         const ctx = createMockContext({ username: 'admin' });
         
-        jest.spyOn(casbinService.enforcer, 'enforce').mockResolvedValue('invalid' as any);
+        jest.spyOn(casbinService.enforcer, 'enforce').mockResolvedValue(false);
         
         const result = await casbinGuard.canActivate(ctx, MockController.prototype, 'methodWithAccess');
-        expect(result).toBe('invalid'); // 非布尔值时直接返回原始值
+        expect(result).toBe(false); // 权限检查失败时返回false
       });
     });
 
