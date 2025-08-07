@@ -75,7 +75,20 @@ describe('Authentication Integration Tests', () => {
       });
 
       expect(loginResult.status).toBe(200);
-      expect(loginResult.body.code).not.toBe(0);
+      expect(loginResult.body.code).toBe(AuthErrors.USR_PWD_ERROR.code);
+      expect(loginResult.body.message).toBe(AuthErrors.USR_PWD_ERROR.error);
+      expect(AuthHelper.isLoginSuccessful(loginResult)).toBe(false);
+    });
+
+    it('should fail login with non-existent user', async () => {
+      // 测试用户不存在的情况，覆盖 auth.service.ts 第19行的逻辑
+      const loginResult = await AuthHelper.performLogin(app, {
+        username: 'non_existent_user_' + Date.now(),
+        password: 'anypassword'
+      });
+
+      expect(loginResult.status).toBe(200);
+      expect(loginResult.body.code).toBe(AuthErrors.USR_PWD_ERROR.code);
       expect(loginResult.body.message).toBe(AuthErrors.USR_PWD_ERROR.error);
       expect(AuthHelper.isLoginSuccessful(loginResult)).toBe(false);
     });
@@ -95,7 +108,7 @@ describe('Authentication Integration Tests', () => {
         });
 
         expect(loginResult.status).toBe(200);
-        expect(loginResult.body.code).not.toBe(0);
+        expect(loginResult.body.code).toBe(AuthErrors.CAPTCHA_ERROR.code);
         expect(loginResult.body.message).toBe(AuthErrors.CAPTCHA_ERROR.error);
         expect(AuthHelper.isLoginSuccessful(loginResult)).toBe(false);
       } finally {

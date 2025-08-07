@@ -426,7 +426,6 @@ describe('Base Module Integration Tests', () => {
         });
         // 重复创建分类可能返回200状态码，但业务错误码不为0
         expect(secondResult.status).toBe(200);
-        expect(secondResult.body.code).not.toBe(0);
         expect(secondResult.body.code).toBe(BusinessErrors.CATEGORY_NAME_EXISTS.code);
         expect(secondResult.body.message).toContain(BusinessErrors.CATEGORY_NAME_EXISTS.error);
       });
@@ -445,7 +444,6 @@ describe('Base Module Integration Tests', () => {
         
         // 删除系统分类可能返回200状态码，但业务错误码不为0
         expect(result.status).toBe(200);
-        expect(result.body.code).not.toBe(0);
         expect(result.body.code).toBe(SystemErrors.SYSTEM_CATEGORY_DELETE_FORBIDDEN_FILE.code);
         expect(result.body.message).toContain(SystemErrors.SYSTEM_CATEGORY_DELETE_FORBIDDEN_FILE.error);
       });
@@ -459,7 +457,6 @@ describe('Base Module Integration Tests', () => {
         
         // 删除操作可能返回200状态码，但业务错误码不为0
         expect(result.status).toBe(200);
-        expect(result.body.code).not.toBe(0);
         expect(result.body.code).toBe(SystemErrors.CATEGORY_HAS_FILES.code);
         expect(result.body.message).toContain(SystemErrors.CATEGORY_HAS_FILES.error);
         
