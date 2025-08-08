@@ -187,7 +187,7 @@ export class DatabaseHelper {
       code: `test_role_${Date.now()}`,
       description: '测试角色描述',
       system: false,
-      policys: []
+      policies: []
     };
 
     const finalRoleData = { ...defaultRoleData, ...roleData };
@@ -207,7 +207,7 @@ export class DatabaseHelper {
         code: role.code,
         description: finalRoleData.description, // Keep description in our interface even if not in DB
         system: role.system,
-        policys: finalRoleData.policys
+        policies: finalRoleData.policies
       };
     } catch (error) {
       throw new TestError(

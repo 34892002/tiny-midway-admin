@@ -62,7 +62,7 @@ export class MockHelper {
       code: `mock_role_${Date.now()}`,
       description: '模拟角色描述',
       system: false,
-      policys: []
+      policies: []
     };
 
     return { ...defaultRole, ...overrides };
@@ -82,7 +82,7 @@ export class MockHelper {
         name: `模拟角色${i + 1}`,
         code: `mock_role_${i + 1}`,
         description: `模拟角色${i + 1}的描述`,
-        policys: [`policy_${i + 1}`]
+        policies: [`policy_${i + 1}`]
       }));
     }
 

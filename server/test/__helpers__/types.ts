@@ -105,7 +105,7 @@ export interface TestRole {
   code: string;
   description?: string;
   system?: boolean;
-  policys: string[];
+  policies: string[];
 }
 
 // 测试配置模型

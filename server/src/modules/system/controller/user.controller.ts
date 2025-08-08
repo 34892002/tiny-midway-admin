@@ -76,14 +76,18 @@ export class RoleController {
       return AdminErrorEnum.TIMEOUT_USER_DATA;
     }
 
-    return await this.userService.updateOne(userId, obj);
+    return await this.userService.updateUser(userId, obj);
   }
 
-  // 添加
+  /**
+   * 添加新用户
+   * @param dto 用户创建数据
+   * @returns 创建结果
+   */
   @Access('UserMgt')
   @Post('/')
   async add(@Body() dto) {
-    return this.userService.updateOne(-1, dto);
+    return this.userService.createUser(dto);
   }
 
   // 删除

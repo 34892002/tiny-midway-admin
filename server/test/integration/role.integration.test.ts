@@ -75,7 +75,7 @@ describe('Role and Permission Integration Tests', () => {
         const createRoleData = {
           name: 'E2E测试角色',
           code: `e2e_test_role_${Date.now()}`,
-          policys: ['test:read', 'test:write']
+          policies: ['test:read', 'test:write']
         };
 
         const createResponse = await httpClient.post('/system/role', createRoleData);
@@ -97,7 +97,7 @@ describe('Role and Permission Integration Tests', () => {
         // 4. 更新角色信息
         const updateRoleData = {
           name: 'E2E测试角色(已更新)',
-          policys: ['test:read', 'test:write', 'test:delete'],
+          policies: ['test:read', 'test:write', 'test:delete'],
           system: false
         };
 
@@ -112,7 +112,7 @@ describe('Role and Permission Integration Tests', () => {
         
         expect(updatedRole).toBeDefined();
         expect(updatedRole.name).toBe(updateRoleData.name);
-        expect(updatedRole.policys).toEqual(expect.arrayContaining(updateRoleData.policys));
+        expect(updatedRole.policies).toEqual(expect.arrayContaining(updateRoleData.policies));
 
         // 6. 删除角色
         const deleteResponse = await httpClient.delete(`/system/role/${testRoleId}`);
@@ -180,7 +180,7 @@ describe('Role and Permission Integration Tests', () => {
         const emptyPolicyResponse = await httpClient.post('/system/role', {
           name: '测试角色',
           code: 'test_role_empty',
-          policys: null
+          policies: null
         });
         
         HttpHelper.expectError(emptyPolicyResponse, BusinessErrors.PERMISSION_LIST_EMPTY.code);
@@ -190,7 +190,7 @@ describe('Role and Permission Integration Tests', () => {
         const invalidPolicyResponse = await httpClient.post('/system/role', {
           name: '测试角色',
           code: 'test_role_invalid',
-          policys: ['123invalid', 'test:read']
+          policies: ['123invalid', 'test:read']
         });
         
         HttpHelper.expectError(invalidPolicyResponse, BusinessErrors.PERMISSION_IDENTIFIER_INVALID.code);
@@ -200,7 +200,7 @@ describe('Role and Permission Integration Tests', () => {
         const duplicateUserResponse = await httpClient.post('/system/role', {
           name: '测试角色',
           code: 'test_role_duplicate',
-          policys: ['admin']
+          policies: ['admin']
         });
         
         HttpHelper.expectError(duplicateUserResponse, BusinessErrors.PERMISSION_USER_CONFLICT.code);
@@ -211,7 +211,7 @@ describe('Role and Permission Integration Tests', () => {
         // 测试更新不存在的角色
         const nonExistentRoleResponse = await httpClient.put('/system/role/99999', {
           name: '不存在的角色',
-          policys: ['test:read']
+          policies: ['test:read']
         });
         
         HttpHelper.expectError(nonExistentRoleResponse, UserDataErrors.ROLE_NOT_FOUND.code);
@@ -227,7 +227,7 @@ describe('Role and Permission Integration Tests', () => {
           const modifySystemResponse = await httpClient.put(`/system/role/${systemRole.id}`, {
             name: systemRole.name,
             system: false,
-            policys: ['test:read']
+            policies: ['test:read']
           });
           
           HttpHelper.expectError(modifySystemResponse, BusinessErrors.SYSTEM_PROPERTY_MODIFY_FORBIDDEN.code);
@@ -432,7 +432,7 @@ describe('Role and Permission Integration Tests', () => {
           name: '测试角色',
           code: `test_role_create_${Date.now()}`,
           description: '创建测试角色',
-          policys: ['UserMgt']
+          policies: ['UserMgt']
         };
 
         const result = await roleService.createOne(testRole);
@@ -449,7 +449,7 @@ describe('Role and Permission Integration Tests', () => {
           name: '测试角色',
           code: `test_role_update_perm_${Date.now()}`,
           description: '更新权限测试角色',
-          policys: ['UserMgt']
+          policies: ['UserMgt']
         };
 
         await roleService.createOne(testRole);
@@ -464,9 +464,8 @@ describe('Role and Permission Integration Tests', () => {
         const role = await prismaClient.role.findFirst({ where: { code: testRole.code } });
         await roleService.updateOne(role.id, {
           name: role.name,
-          code: role.code,
           system: role.system,
-          policys: ['ResourceMgt']
+          policies: ['ResourceMgt']
         });
 
         // 重新加载策略
@@ -485,31 +484,31 @@ describe('Role and Permission Integration Tests', () => {
           name: '测试角色',
           code: `test_role_user_assign_${Date.now()}`,
           description: '用户分配测试角色',
-          policys: ['UserMgt']
+          policies: ['UserMgt']
         };
 
         await roleService.createOne(testRole);
 
         // 创建用户
-        const testUser = {
-          id: 0,
+        const testUser = await DatabaseHelper.createTestUser({
           username: `test_user_assign_${Date.now()}`,
-          password: 'password123',
           nickName: '测试用户',
           email: `test${Date.now()}@example.com`,
-          phone: '',
-          address: '',
-          system: false,
-          passwordVersion: 1,
-          gender: 1,
-          avatar: '',
-          createTime: new Date(),
-          updateTime: new Date(),
+          roles: [testRole.code]
+        });
+
+        // 获取创建的用户ID
+        const users = await userService.findAll({ username: testUser.username }, { limit: 1 });
+        expect(users.records.length).toBeGreaterThan(0);
+        const userId = users.records[0].id;
+
+        // 更新用户角色
+        const updateData = {
+          ...users.records[0],
           roles: [testRole.code]
         };
-
-        const result = await userService.updateOne(0, testUser);
-        expect(result).toBeDefined();
+        const result = await userService.updateUser(userId, updateData);
+        expect(result).toBe(true);
 
         // 验证用户权限
         const hasPermission = await casbinService.checkAccess(testUser.username, 'UserMgt');
@@ -813,7 +812,7 @@ describe('Role and Permission Integration Tests', () => {
           roles: ['test_role_password']
         };
         
-        const updateResult = await userService.updateOne(user.id, updateData);
+        const updateResult = await userService.updateUser(user.id, updateData);
         expect(updateResult).toBe(true);
       });
 
@@ -854,23 +853,23 @@ describe('Role and Permission Integration Tests', () => {
     describe('RoleService Enhanced Tests', () => {
       it('should validate role code and policies correctly', async () => {
         // 测试正常情况
-        await expect(roleService.checkCodeAndPolicys('test_role_valid', ['TestPolicy']))
+        await expect(roleService.checkCodeAndPolicies('test_role_valid', ['TestPolicy']))
           .resolves.toBeUndefined();
 
         // 测试空角色代码
-        await expect(roleService.checkCodeAndPolicys('', ['policy1']))
+        await expect(roleService.checkCodeAndPolicies('', ['policy1']))
           .rejects.toThrow(BusinessErrors.ROLE_IDENTIFIER_EMPTY.error);
 
         // 测试空权限列表
-        await expect(roleService.checkCodeAndPolicys('role1', []))
+        await expect(roleService.checkCodeAndPolicies('role1', []))
           .rejects.toThrow(BusinessErrors.PERMISSION_LIST_EMPTY.error);
 
         // 测试权限标识为空
-        await expect(roleService.checkCodeAndPolicys('role1', ['policy1', '']))
+        await expect(roleService.checkCodeAndPolicies('role1', ['policy1', '']))
           .rejects.toThrow(BusinessErrors.PERMISSION_IDENTIFIER_EMPTY.error);
 
         // 测试权限标识重复
-        await expect(roleService.checkCodeAndPolicys('role1', ['policy1', 'policy1']))
+        await expect(roleService.checkCodeAndPolicies('role1', ['policy1', 'policy1']))
           .rejects.toThrow(BusinessErrors.PERMISSION_IDENTIFIER_DUPLICATE.error);
       });
 
@@ -880,7 +879,7 @@ describe('Role and Permission Integration Tests', () => {
           name: '测试查询角色',
           code: `test_findall_role_${Date.now()}`,
           description: '用于测试查询的角色',
-          policys: ['TestPolicy']
+          policies: ['TestPolicy']
         });
 
         // 测试分页查询
@@ -896,9 +895,9 @@ describe('Role and Permission Integration Tests', () => {
 
         const foundRole = result.records.find((r: any) => r.code === testRole.code);
         if (foundRole) {
-          // policys 字段可能不存在，这是正常的
-          if (foundRole.policys) {
-            expect(foundRole.policys).toBeDefined();
+          // policies 字段可能不存在，这是正常的
+        if (foundRole.policies) {
+          expect(foundRole.policies).toBeDefined();
           }
         } else {
           console.log('ℹ️  测试角色未在查询结果中找到，跳过详细验证');

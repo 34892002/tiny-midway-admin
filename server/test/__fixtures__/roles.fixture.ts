@@ -14,7 +14,7 @@ export const DEFAULT_TEST_ROLES: TestRole[] = [
     code: 'admin',
     description: '系统管理员角色',
     system: true,
-    policys: ['admin:*']
+    policies: ['admin:*']
   },
   {
     id: 2,
@@ -22,7 +22,7 @@ export const DEFAULT_TEST_ROLES: TestRole[] = [
     code: 'user',
     description: '普通用户角色',
     system: false,
-    policys: ['user:read']
+    policies: ['user:read']
   }
 ];
 
@@ -34,5 +34,5 @@ export const TEST_ROLE_TEMPLATE: Partial<TestRole> = {
   code: 'test_role',
   description: '用于测试的角色',
   system: false,
-  policys: []
+  policies: []
 };

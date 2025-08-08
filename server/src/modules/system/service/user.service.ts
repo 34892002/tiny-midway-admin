@@ -1,9 +1,10 @@
 import { Provide, Inject } from '@midwayjs/core';
 import { PrismaClient } from '@prisma/client';
-import { AdminBusinessError, BusinessErrors } from '../../../error/admin.error';
+import { AdminBusinessError, BusinessErrors, UserDataErrors } from '../../../error/admin.error';
 import { CasbinService } from '../../base/service/casbin.service';
-import { UserDto } from '../dto/user';
+import { UserDto, UpdateUserInfoDto, CreateUserDto, UpdateUserDto } from '../dto/user.dto';
 import { Options } from '../../../core/crud_service';
+import { IdentifierValidator } from '../../../utils';
 import * as bcrypt from 'bcrypt';
 
 import * as _ from 'lodash';
@@ -24,7 +25,13 @@ export class UserService {
     await this.casbinService.enforcer.loadPolicy();
     return true;
   }
-  async updateUserInfo(id: number, data: any) {
+  /**
+   * 更新用户基础信息（不包含角色信息）
+   * @param id 用户ID
+   * @param data 要更新的用户数据
+   * @returns 返回更新后的用户信息（不包含密码字段）
+   */
+  async updateUserInfo(id: number, data: UpdateUserInfoDto) {
     const res = await this.prisma.user.update({
       where: {
         id,
@@ -42,28 +49,45 @@ export class UserService {
    * @throws AdminBusinessError 当用户标识为空、角色标识列表为空、角色标识为空、角色标识不符合规则、角色标识重复、用户标识与角色标识重复、角色标识与权限标识重复时抛出错误
    */
   async checkNameAndRoles(name: string, roles: string[]) {
-    if (!name) throw new AdminBusinessError(BusinessErrors.USER_IDENTIFIER_EMPTY);
-    if (!roles?.length) throw new AdminBusinessError(BusinessErrors.ROLE_LIST_EMPTY);
-    if (!roles.every(item => item)) throw new AdminBusinessError(BusinessErrors.ROLE_IDENTIFIER_EMPTY);
-    const regex = /^(?!^\d)[a-zA-Z0-9_]+$/;
-    if (!roles.every(item => regex.test(item))) throw new AdminBusinessError(BusinessErrors.ROLE_IDENTIFIER_INVALID);
-    if (roles.length !== new Set(roles).size) throw new AdminBusinessError(BusinessErrors.ROLE_IDENTIFIER_DUPLICATE);
-    // 用户标识不能跟提交的角色标识重复
-    if (roles.includes(name)) throw new AdminBusinessError(BusinessErrors.USER_ROLE_CONFLICT);
-    // 用户标识不能跟角色标识重复
-    const _roleList = await this.casbinService.getAllRolesAndPlicysByDB('role');
-    const roleList = _roleList.map(item => item.role);
-    if (roleList.includes(name)) throw new AdminBusinessError(BusinessErrors.USER_ROLE_CONFLICT);
-    // 角色不能跟权限重复
-    // 权限不能跟角色重复
-    const _List = await this.casbinService.getAllRolesAndPlicysByDB('policy')
-    const policyList = _List.map(item => item.policy)
-    roles.forEach(item => {
-      if (policyList.includes(item)) throw new AdminBusinessError(BusinessErrors.ROLE_PERMISSION_CONFLICT);
-    });
+    // 1. 基础数据校验
+    IdentifierValidator.validateUserNameAndRoles(name, roles);
+
+    // 2. 业务逻辑校验（需要查询数据库）
+    await this.checkUserRoleBusinessConflicts(name, roles);
+    
     return true;
   }
-  public async findAll(where: any, options: Partial<Options>): Promise<{ records: any[]; total: number; currentPage: number; pageSize: number }> {
+
+  /**
+   * 检查用户-角色业务冲突（需要查询数据库的校验）
+   * @param name 用户标识
+   * @param roles 角色标识列表
+   * @throws AdminBusinessError 当发现业务冲突时抛出错误
+   */
+  private async checkUserRoleBusinessConflicts(name: string, roles: string[]) {
+    // 用户标识不能跟现有角色标识重复
+    const _roleList = await this.casbinService.getAllRolesAndPlicysByDB('role');
+    const roleList = _roleList.map(item => item.role);
+    if (roleList.includes(name)) {
+      throw new AdminBusinessError(BusinessErrors.USER_ROLE_CONFLICT);
+    }
+
+    // 角色不能跟权限重复
+    const _policyList = await this.casbinService.getAllRolesAndPlicysByDB('policy');
+    const policyList = _policyList.map(item => item.policy);
+    roles.forEach(item => {
+      if (policyList.includes(item)) {
+        throw new AdminBusinessError(BusinessErrors.ROLE_PERMISSION_CONFLICT);
+      }
+    });
+  }
+  /**
+   * 分页查询用户列表
+   * @param where 查询条件
+   * @param options 查询选项（包含分页、排序等参数）
+   * @returns 返回分页查询结果，包含用户列表、总数、当前页码和页面大小
+   */
+  public async findAll(where: any, options: Partial<Options>): Promise<{ records: UserDto[]; total: number; currentPage: number; pageSize: number }> {
     const { select, include, sort = { id: 'desc' }, page = 1, limit = 20 } = options;
     const orderBy = typeof sort === 'string' ? JSON.parse(sort) : sort;
     const skip = (Number(page) - 1) * Number(limit);
@@ -73,68 +97,45 @@ export class UserService {
       this.prisma.user.count({ where }),
     ]);
     const roles = await this.casbinService.getAdminGroup();
-    // 插入roles字段
-    rows.forEach((item: any) => {
+    // 插入roles字段并转换为UserDto类型
+    const userDtos: UserDto[] = rows.map((item: any) => {
       //清理密码字段
-      delete item.password;
+      const userWithoutPassword = _.omit(item, ['password']);
       const curRole = roles.find(role => role.user === item.username);
-      if (curRole?.roles) item.roles = curRole.roles
+      return {
+        ...userWithoutPassword,
+        roles: curRole?.roles || []
+      } as UserDto;
     });
-    return { records: rows, total: count, currentPage: page, pageSize: limit };
+    return { records: userDtos, total: count, currentPage: page, pageSize: limit };
   }
 
   /**
-   * 更新用户信息
-   * @param id 用户ID
-   * @param _data 用户数据
-   * @returns 更新结果
+   * 创建新用户
+   * @param data 用户创建数据
+   * @returns 创建成功返回true
+   * @throws AdminBusinessError 当校验失败时抛出相应错误
    */
-  async updateOne(id: number, _data: UserDto) {
-    // 不信任controller提交信息，直接查询数据库
-    const registeredUser = await this.prisma.user.findUnique({ where: { id } });
-    // 新建用户数据
-    let create = _.omit(_data, ['roles']);
-    // 更新用户数据，不能修改username，因为它在casbin表中作为权限code
-    let update = _.omit(_data, ['username', 'roles']);
-    // 角色列表
-    let curRoles = _data.roles;
-    // 操作用户名
-    let targetUsername = ''
-
-    if (registeredUser) {
-      // 修改用户
-      // 使用查询到的信息
-      targetUsername = registeredUser.username;
-      if (_data.password) {
-        // 老用户修改密码，更新passwordVersion
-        update.password = await bcrypt.hash(_data.password, 10);
-        update.passwordVersion = registeredUser.passwordVersion + 1;
-      }
-
-    } else {
-      // 新增用户
-      // 使用参数提交的信息
-      targetUsername = _data.username;
-      create.password = await bcrypt.hash(_data.password, 10);
-    }
-
+  async createUser(data: CreateUserDto) {
+    const { username, password, roles, ...userData } = data;
+    
     // 数据完整性校验
-    await this.checkNameAndRoles(targetUsername, curRoles);
+    await this.checkNameAndRoles(username, roles);
+
+    // 准备创建数据
+    const createData = {
+      ...userData,
+      username,
+      password: await bcrypt.hash(password, 10)
+    };
 
     try {
-      await this.prisma.$transaction(async client => {
-        if (registeredUser) {
-          // 更新现有用户
-          await client.user.update({ where: { id }, data: update });
-        } else {
-          // 创建新用户（不指定 ID，让数据库自动生成）
-          await client.user.create({ data: create });
-        }
+      await this.prisma.$transaction(async (client) => {
+        // 创建新用户
+        await client.user.create({ data: createData });
         // 同步该用户的所有角色
-        await this.casbinService.syncAdminDBRulesIncremental('g', targetUsername, curRoles, '', client);
+        await this.casbinService.syncAdminDBRulesIncremental('g', username, roles, '', client);
       });
-    } catch (error) {
-      throw error;
     } finally {
       await this.reload();
     }
@@ -142,17 +143,79 @@ export class UserService {
     return true;
   }
 
-  async deleteById(id: number) {
-    await this.prisma.$transaction(async client => {
-      const user = await client.user.findUnique({ where: { id }, select: { username: true, system: true } });
-      if (user.system) throw new AdminBusinessError(BusinessErrors.SYSTEM_USER_DELETE_FORBIDDEN);
-      await client.user.delete({ where: { id } });
-      // 清空该用户的所有角色
-      await this.casbinService.clearDBRulesByV0('g', user.username, client);
-    });
-    return await this.reload();
+  /**
+   * 更新用户信息
+   * @param id 用户ID
+   * @param data 用户更新数据
+   * @returns 更新成功返回true
+   * @throws AdminBusinessError 当用户不存在或校验失败时抛出相应错误
+   */
+  async updateUser(id: number, data: UpdateUserDto) {
+    // 查询用户是否存在
+    const registeredUser = await this.prisma.user.findUnique({ where: { id } });
+    if (!registeredUser) {
+      throw new AdminBusinessError(UserDataErrors.USER_NOT_FOUND);
+    }
+
+    const { password, roles, ...userData } = data;
+    const targetUsername = registeredUser.username;
+    
+    // 如果提供了角色信息，进行数据完整性校验
+    if (roles !== undefined) {
+      await this.checkNameAndRoles(targetUsername, roles);
+    }
+
+    // 准备更新数据（不能修改username，因为它在casbin表中作为权限code）
+    const updateData: any = { ...userData };
+    
+    if (password) {
+      // 更新密码时，同时更新passwordVersion
+      updateData.password = await bcrypt.hash(password, 10);
+      updateData.passwordVersion = registeredUser.passwordVersion + 1;
+    }
+
+    try {
+      await this.prisma.$transaction(async (client) => {
+        // 更新用户信息
+        await client.user.update({ where: { id }, data: updateData });
+        // 如果提供了角色信息，同步用户角色
+        if (roles !== undefined) {
+          await this.casbinService.syncAdminDBRulesIncremental('g', targetUsername, roles, '', client);
+        }
+      });
+    } finally {
+      await this.reload();
+    }
+
+    return true;
   }
 
+  /**
+   * 根据ID删除用户
+   * @param id 用户ID
+   * @returns 删除成功返回true
+   * @throws AdminBusinessError 当尝试删除系统用户时抛出错误
+   */
+  async deleteById(id: number) {
+    try {
+      await this.prisma.$transaction(async (client) => {
+        const user = await client.user.findUnique({ where: { id }, select: { username: true, system: true } });
+        if (user.system) throw new AdminBusinessError(BusinessErrors.SYSTEM_USER_DELETE_FORBIDDEN);
+        await client.user.delete({ where: { id } });
+        // 清空该用户的所有角色
+        await this.casbinService.clearDBRulesByV0('g', user.username, client);
+      });
+      return true;
+    } finally {
+      await this.reload();
+    }
+  }
+
+  /**
+   * 根据ID获取安全的用户信息（不包含密码）
+   * @param id 用户ID
+   * @returns 返回用户信息（不包含密码字段）
+   */
   async safeUserById(id: number) {
     const user = await this.prisma.user.findUnique({
       where: { id },
@@ -162,6 +225,11 @@ export class UserService {
     return safe;
   }
 
+  /**
+   * 根据用户名获取安全的用户信息（不包含密码）
+   * @param username 用户名
+   * @returns 返回用户信息（不包含密码字段）
+   */
   async safeUserByName(username: string) {
     const user = await this.prisma.user.findFirst({
       where: { username },

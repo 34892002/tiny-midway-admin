@@ -45,6 +45,7 @@
     "dev": "cross-env NODE_ENV=local mwtsc --watch --project tsconfig.dev.json --run @midwayjs/mock/app.js",
     "test:base": "cross-env NODE_ENV=unittest DATABASE_URL=file:./test.db jest",
     "test": "npm run test:base -- --runInBand --detectOpenHandles",
+    "test:error": "npm run test:base -- --runInBand --detectOpenHandles --onlyFailures",
     "cov": "npm run test:base -- --coverage --runInBand --detectOpenHandles",
     "cov:html": "npm run cov -- --coverageReporters=html",
     "lint": "mwts check",
