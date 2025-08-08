@@ -152,8 +152,8 @@ export class CasbinService {
     if (!codes.length) return true;
     const act = 'access'
     // 转换为 casbin 需要的格式
-    const policys = codes.map(code => [role, code, act]);
-    const res = await this.enforcer.addPolicies(policys);
+    const policies = codes.map(code => [role, code, act]);
+    const res = await this.enforcer.addPolicies(policies);
     if (save && res) {
       await this.enforcer.savePolicy();
     }
@@ -164,8 +164,8 @@ export class CasbinService {
     if (!username) throw new AdminBusinessError(BusinessErrors.USER_IDENTIFIER_EMPTY);
     if (!roles.length) return true;
     // 转换为 casbin 需要的格式
-    const policys = roles.map(role => [username, role]);
-    const res = await this.enforcer.addGroupingPolicies(policys);
+    const policies = roles.map(role => [username, role]);
+    const res = await this.enforcer.addGroupingPolicies(policies);
     if (save && res) {
       await this.enforcer.savePolicy();
     }
@@ -176,8 +176,8 @@ export class CasbinService {
     if (!username) throw new AdminBusinessError(BusinessErrors.USER_IDENTIFIER_EMPTY);
     if (!roles.length) return true;
     // 转换为 casbin 需要的格式
-    const policys = roles.map(role => [username, role]);
-    const res = await this.enforcer.removeGroupingPolicies(policys);
+    const policies = roles.map(role => [username, role]);
+    const res = await this.enforcer.removeGroupingPolicies(policies);
     if (save && res) {
       await this.enforcer.savePolicy();
     }
@@ -189,8 +189,8 @@ export class CasbinService {
     if (!codes.length) return true;
     const act = 'access'
     // 转换为 casbin 需要的格式
-    const policys = codes.map(code => [role, code, act]);
-    const res = await this.enforcer.removePolicies(policys);
+    const policies = codes.map(code => [role, code, act]);
+    const res = await this.enforcer.removePolicies(policies);
     if (save && res) {
       await this.enforcer.savePolicy();
     }
@@ -209,8 +209,8 @@ export class CasbinService {
 
   async diffAdminPolicy(role: string, codes: string[]) {
     // 获取该角色所有的权限
-    const rolePolicys = await this.getAdminPlocy();
-    const curCodes = rolePolicys.find(item => item.role === role)?.codes || [];
+    const rolePolicies = await this.getAdminPlocy();
+    const curCodes = rolePolicies.find(item => item.role === role)?.codes || [];
     // 获取需要增加和删除的权限
     const addCodes = codes.filter(item => !curCodes.includes(item));
     const removeCodes = curCodes.filter(item => !codes.includes(item));

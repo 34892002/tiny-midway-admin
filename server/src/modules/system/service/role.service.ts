@@ -77,8 +77,8 @@ export class RoleService {
     const policies = await this.casbinService.getAdminPlocy();
     // 插入policies字段
     rows.forEach(item => {
-      const curPolicy = policies.find(policy => policy.role === item.code);
-      if (curPolicy?.codes) item['policies'] = curPolicy.codes
+      const curPolicies = policies.find(policy => policy.role === item.code);
+      if (curPolicies?.codes) item['policies'] = curPolicies.codes
     });
     return { records: rows, total: count, currentPage: page, pageSize: limit };
   }

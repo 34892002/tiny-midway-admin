@@ -1,7 +1,7 @@
 <template>
   <CommonPage>
     <fs-crud ref="crudRef" v-bind="crudBinding" @reset="onReset">
-      <template #form_policys="scope">
+      <template #form_policies="scope">
         <!-- {{ scope }} -->
         <n-tree-select
             multiple
@@ -58,6 +58,6 @@ import { forEach } from "lodash-es";
   }
   const handleUpdateValue = (value, form) => {
     // console.log('value, option: ', value, option)
-    form.policys = value
+    form.policies = value
   }
 </script>
