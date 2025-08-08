@@ -1,10 +1,13 @@
 import { Provide, Inject } from '@midwayjs/core';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, User } from '@prisma/client';
 import { AdminBusinessError, BusinessErrors, UserDataErrors } from '../../../error/admin.error';
 import { CasbinService } from '../../base/service/casbin.service';
+import { PermissionService } from './permission.service';
 import { UserDto, UpdateUserInfoDto, CreateUserDto, UpdateUserDto } from '../dto/user.dto';
 import { Options } from '../../../core/crud_service';
 import { IdentifierValidator } from '../../../utils';
+import { PaginationUtil } from '../../../utils/pagination.util';
+import { PaginationResult } from '../types/pagination.types';
 import * as bcrypt from 'bcrypt';
 
 import * as _ from 'lodash';
@@ -15,10 +18,12 @@ export class UserService {
   prisma: PrismaClient;
   @Inject()
   casbinService: CasbinService;
+  @Inject()
+  permissionService: PermissionService;
 
   /**
    * 重新加载Casbin策略
-   *
+   * @deprecated 请使用 PermissionService.updatePermissionsWithAutoReload 方法
    * @returns 返回布尔值，表示是否成功重新加载策略
    */
   async reload() {
@@ -87,27 +92,56 @@ export class UserService {
    * @param options 查询选项（包含分页、排序等参数）
    * @returns 返回分页查询结果，包含用户列表、总数、当前页码和页面大小
    */
-  public async findAll(where: any, options: Partial<Options>): Promise<{ records: UserDto[]; total: number; currentPage: number; pageSize: number }> {
-    const { select, include, sort = { id: 'desc' }, page = 1, limit = 20 } = options;
-    const orderBy = typeof sort === 'string' ? JSON.parse(sort) : sort;
-    const skip = (Number(page) - 1) * Number(limit);
-    const take = Number(limit);
+  public async findAll(where: Record<string, any>, options: Partial<Options>): Promise<PaginationResult<UserDto>> {
+    const { select, include } = options;
+    
+    // 使用 PaginationUtil 解析分页参数
+    const paginationOptions = PaginationUtil.parsePaginationQuery({
+      currentPage: options.page,
+      pageSize: options.limit,
+      sort: options.sort
+    });
+    
+    // 构建数据库查询条件
+    const queryOptions = PaginationUtil.buildDatabaseQuery(where, paginationOptions);
+    
+    // 构建查询参数，确保 select 和 include 不会同时使用
+    const findManyArgs: any = {
+      where: queryOptions.where,
+      orderBy: queryOptions.orderBy,
+      skip: queryOptions.skip,
+      take: queryOptions.take
+    };
+    
+    // 优先使用 select，如果没有 select 才使用 include
+    if (select) {
+      findManyArgs.select = select;
+    } else if (include) {
+      findManyArgs.include = include;
+    }
+    
+    // 执行并行查询：获取数据和总数
     const [rows, count] = await Promise.all([
-      this.prisma.user.findMany({ where, select, include, orderBy, skip, take } as any),
-      this.prisma.user.count({ where }),
+      this.prisma.user.findMany(findManyArgs),
+      this.prisma.user.count({ where: queryOptions.where }),
     ]);
+    
+    // 获取所有用户角色信息
     const roles = await this.casbinService.getAdminGroup();
+    
     // 插入roles字段并转换为UserDto类型
-    const userDtos: UserDto[] = rows.map((item: any) => {
-      //清理密码字段
+    const userDtos: UserDto[] = rows.map((item: User) => {
+      // 清理密码字段
       const userWithoutPassword = _.omit(item, ['password']);
-      const curRole = roles.find(role => role.user === item.username);
+      const curRole = roles.find((role: { user: string; roles: string[] }) => role.user === item.username);
       return {
         ...userWithoutPassword,
         roles: curRole?.roles || []
       } as UserDto;
     });
-    return { records: userDtos, total: count, currentPage: page, pageSize: limit };
+    
+    // 使用 PaginationUtil 构建分页结果
+    return PaginationUtil.buildPaginationResult(userDtos, count, paginationOptions);
   }
 
   /**
@@ -129,18 +163,16 @@ export class UserService {
       password: await bcrypt.hash(password, 10)
     };
 
-    try {
+    // 使用权限服务的自动重载机制
+    return await this.permissionService.updatePermissionsWithAutoReload(async () => {
       await this.prisma.$transaction(async (client) => {
         // 创建新用户
         await client.user.create({ data: createData });
         // 同步该用户的所有角色
-        await this.casbinService.syncAdminDBRulesIncremental('g', username, roles, '', client);
+        await this.permissionService.syncUserRoles(username, roles, client, { autoReload: false, transaction: true });
       });
-    } finally {
-      await this.reload();
-    }
-
-    return true;
+      return true;
+    });
   }
 
   /**
@@ -166,7 +198,7 @@ export class UserService {
     }
 
     // 准备更新数据（不能修改username，因为它在casbin表中作为权限code）
-    const updateData: any = { ...userData };
+    const updateData: Partial<User> = { ...userData };
     
     if (password) {
       // 更新密码时，同时更新passwordVersion
@@ -174,20 +206,18 @@ export class UserService {
       updateData.passwordVersion = registeredUser.passwordVersion + 1;
     }
 
-    try {
+    // 使用权限服务的自动重载机制
+    return await this.permissionService.updatePermissionsWithAutoReload(async () => {
       await this.prisma.$transaction(async (client) => {
         // 更新用户信息
         await client.user.update({ where: { id }, data: updateData });
         // 如果提供了角色信息，同步用户角色
         if (roles !== undefined) {
-          await this.casbinService.syncAdminDBRulesIncremental('g', targetUsername, roles, '', client);
+          await this.permissionService.syncUserRoles(targetUsername, roles, client, { autoReload: false, transaction: true });
         }
       });
-    } finally {
-      await this.reload();
-    }
-
-    return true;
+      return true;
+    });
   }
 
   /**
@@ -197,18 +227,17 @@ export class UserService {
    * @throws AdminBusinessError 当尝试删除系统用户时抛出错误
    */
   async deleteById(id: number) {
-    try {
+    // 使用权限服务的自动重载机制
+    return await this.permissionService.updatePermissionsWithAutoReload(async () => {
       await this.prisma.$transaction(async (client) => {
         const user = await client.user.findUnique({ where: { id }, select: { username: true, system: true } });
         if (user.system) throw new AdminBusinessError(BusinessErrors.SYSTEM_USER_DELETE_FORBIDDEN);
         await client.user.delete({ where: { id } });
         // 清空该用户的所有角色
-        await this.casbinService.clearDBRulesByV0('g', user.username, client);
+        await this.permissionService.clearUserRoles(user.username, client);
       });
       return true;
-    } finally {
-      await this.reload();
-    }
+    });
   }
 
   /**

@@ -59,7 +59,6 @@ export class CasbinService {
   @Config('casbin')
   casbinCfg;
 
-  // TODO: 调用一次savePolicy，数据库的策略表会全部删除再插入一遍，真的难绷，少用慎用。
   enforcer: casbin.Enforcer;
 
   @Init()

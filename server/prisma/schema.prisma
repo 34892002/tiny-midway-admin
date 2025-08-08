@@ -24,6 +24,8 @@ model CasbinRule {
   v4    String?
   v5    String?
 
+  @@index([ptype, v0]) // 优化用户角色查询
+  @@index([ptype, v1]) // 优化角色权限查询
   @@map("casbin_rule")
 }
 

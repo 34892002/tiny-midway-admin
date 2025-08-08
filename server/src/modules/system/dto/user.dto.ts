@@ -1,10 +1,22 @@
 import { User as PrismaUser } from '@prisma/client';
+import { PaginationQuery } from '../types/pagination.types';
 
 export type User = PrismaUser & {};
 
 export type UserDto = PrismaUser & {
   roles: string[]; // 添加新的 roles 属性
 };
+
+/**
+ * 用户查询数据传输对象
+ */
+export interface UserQueryDto extends PaginationQuery {
+  username?: string;
+  nickName?: string;
+  email?: string;
+  phone?: string;
+  system?: boolean;
+}
 
 /**
  * 创建用户数据传输对象

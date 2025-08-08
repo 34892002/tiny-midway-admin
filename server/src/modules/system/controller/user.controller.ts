@@ -6,6 +6,7 @@ import { AdminErrorEnum, AdminBusinessError, SystemErrors, UserDataErrors, AuthE
 import { UserService } from '../service/user.service';
 import { Access } from '../../../decorator/access';
 import { CasbinGuard } from '../../../guard/casbin';
+import { UserQueryDto, CreateUserDto, UpdateUserDto } from '../dto/user.dto';
 
 @UseGuard(CasbinGuard)
 @Controller('/system/user', { middleware: [JwtPassportMiddleware] })
@@ -18,7 +19,7 @@ export class RoleController {
   // 查询列表
   @Access('UserMgt')
   @Post('/page')
-  async page(@Body() query: any) {
+  async page(@Body() query: UserQueryDto) {
     const { sort = JSON.stringify({ id: 'desc' }), currentPage = 1, pageSize = 20, ...where } = query;
     const filteredWhere = Object.entries(where).reduce((acc, [key, value]) => {
       // 过滤非法值
@@ -31,9 +32,11 @@ export class RoleController {
         acc[key] = value;
       }
       return acc;
-    }, {});
+    }, {} as Record<string, any>);
+    
+    const parsedSort = typeof sort === 'string' ? JSON.parse(sort) : sort || { id: 'desc' };
     const data = await this.userService.findAll(filteredWhere, {
-      sort: JSON.parse(sort as string),
+      sort: parsedSort,
       page: Number(currentPage),
       limit: Number(pageSize),
     });
@@ -50,7 +53,7 @@ export class RoleController {
   @Put('/:id')
   async update(
     @Param('id') id: string,
-    @Body() obj: any,
+    @Body() obj: UpdateUserDto,
   ) {
     // 演示环境检查（环境保护规则）
     if (process.env.RUN_DEMO === 'true') {
@@ -86,7 +89,7 @@ export class RoleController {
    */
   @Access('UserMgt')
   @Post('/')
-  async add(@Body() dto) {
+  async add(@Body() dto: CreateUserDto) {
     return this.userService.createUser(dto);
   }
 
