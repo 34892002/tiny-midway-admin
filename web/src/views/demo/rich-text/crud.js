@@ -14,22 +14,22 @@ export const pageRequest = async (query) => {
     _sort = JSON.stringify(createSort)
   }
   const params = { ...form, sort: _sort, ...page }
-  const { data } = await request.post('/demo/crud/page', params)
+  const { data } = await request.post('/demo/rich/page', params)
   return data
 }
 
 export const editRequest = async ({ form, row }) => {
   const { id } = row
-  return await request.put(`/demo/crud/${id}`, form)
+  return await request.put(`/demo/rich/${id}`, form)
 }
 
 export const delRequest = async ({ row }) => {
   const { id } = row
-  return await request.delete(`/demo/crud/${id}`, {})
+  return await request.delete(`/demo/rich/${id}`, {})
 }
 
 export const addRequest = async ({ form }) => {
-  return await request.post('/demo/crud', form)
+  return await request.post('/demo/rich', form)
 }
 
 /**

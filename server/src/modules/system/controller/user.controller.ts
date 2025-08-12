@@ -1,11 +1,12 @@
 import { UseGuard, Post, Del, Put, Inject, Controller, Body, Param } from '@midwayjs/core';
 import { Context } from '@midwayjs/koa';
 import { JwtPassportMiddleware } from '../../../middleware/jwt.middleware';
-import { MidwayError } from '@midwayjs/core';
+import { AdminErrorEnum, AdminBusinessError, SystemErrors, UserDataErrors, AuthErrors } from '../../../error/admin.error';
 
 import { UserService } from '../service/user.service';
 import { Access } from '../../../decorator/access';
 import { CasbinGuard } from '../../../guard/casbin';
+import { UserQueryDto, CreateUserDto, UpdateUserDto } from '../dto/user.dto';
 
 @UseGuard(CasbinGuard)
 @Controller('/system/user', { middleware: [JwtPassportMiddleware] })
@@ -18,7 +19,7 @@ export class RoleController {
   // 查询列表
   @Access('UserMgt')
   @Post('/page')
-  async page(@Body() query: any) {
+  async page(@Body() query: UserQueryDto) {
     const { sort = JSON.stringify({ id: 'desc' }), currentPage = 1, pageSize = 20, ...where } = query;
     const filteredWhere = Object.entries(where).reduce((acc, [key, value]) => {
       // 过滤非法值
@@ -31,33 +32,65 @@ export class RoleController {
         acc[key] = value;
       }
       return acc;
-    }, {});
+    }, {} as Record<string, any>);
+    
+    const parsedSort = typeof sort === 'string' ? JSON.parse(sort) : sort || { id: 'desc' };
     const data = await this.userService.findAll(filteredWhere, {
-      sort: JSON.parse(sort as string),
+      sort: parsedSort,
       page: Number(currentPage),
       limit: Number(pageSize),
     });
     return data;
   }
 
-  // 修改
+  /**
+   * 修改用户信息
+   * @param id 用户ID
+   * @param obj 用户更新数据
+   * @returns 更新结果
+   */
   @Access('UserMgt')
   @Put('/:id')
   async update(
     @Param('id') id: string,
-    @Body() obj: any,
+    @Body() obj: UpdateUserDto,
   ) {
+    // 演示环境检查（环境保护规则）
     if (process.env.RUN_DEMO === 'true') {
-      if (obj.system) { throw new MidwayError('演示环境不能修改Root用户', '5005') };
+      return SystemErrors.DEMO_ENVIRONMENT_RESTRICTION;
     }
-    return await this.userService.updateOne(Number(id), obj);
+
+    const userId = Number(id);
+    // 获取当前登录用户信息
+    const currentUser = this.ctx.state?.user;
+    // 获取目标用户信息
+    const targetUser = await this.userService.safeUserById(userId);
+    if (!targetUser) {
+      throw new AdminBusinessError(UserDataErrors.USER_NOT_FOUND);
+    }
+    
+    // 业务规则检查：非系统用户不能修改系统用户
+    if (targetUser.system && !currentUser.system) {
+      return AuthErrors.PERMISSION_DENIED;
+    }
+
+    // 修改了自己的信息，通知前端，踢下线重新登录。
+    if (currentUser.id === userId) {
+      return AdminErrorEnum.TIMEOUT_USER_DATA;
+    }
+
+    return await this.userService.updateUser(userId, obj);
   }
 
-  // 添加
+  /**
+   * 添加新用户
+   * @param dto 用户创建数据
+   * @returns 创建结果
+   */
   @Access('UserMgt')
   @Post('/')
-  async add(@Body() dto) {
-    return this.userService.updateOne(-1, dto);
+  async add(@Body() dto: CreateUserDto) {
+    return this.userService.createUser(dto);
   }
 
   // 删除

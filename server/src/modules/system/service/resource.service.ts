@@ -1,6 +1,7 @@
 import { Provide, Inject } from '@midwayjs/core';
 import { PrismaClient, Resource } from '@prisma/client';
 import { CasbinService } from '../../base/service/casbin.service';
+import { AdminBusinessError, SystemErrors, BusinessErrors } from '../../../error/admin.error';
 
 @Provide()
 export class ResourceService {
@@ -65,7 +66,7 @@ export class ResourceService {
       return res;
     } catch (error) {
       if (error.code === 'P2002') {
-        throw new Error(`编码 ${data.code} 已经存在，请重新输入！`);
+        throw new AdminBusinessError(BusinessErrors.CODE_ALREADY_EXISTS);
       }
       throw error;
     }
@@ -110,7 +111,7 @@ export class ResourceService {
     });
     // 如果有子菜单，则不能删除
     if (count) {
-      throw new Error('该菜单下有子菜单&按钮，请先删除子菜单&按钮!');
+      throw new AdminBusinessError(SystemErrors.MENU_HAS_CHILDREN);
     }
     // 删除权限
     const resource = await this.prisma.resource.findUnique({

@@ -15,7 +15,15 @@ export class DictService {
         },
       },
     );
-    return str?.json ? JSON.parse(str.json) : null;
+    if (!str?.json) {
+      return [];
+    }
+    try {
+      return JSON.parse(str.json);
+    } catch (error) {
+      console.error(`Failed to parse JSON for dict code ${code}:`, error);
+      return [];
+    }
   }
 
   async getMenuDict() {
@@ -45,6 +53,7 @@ export class DictService {
         id: menu.id,
         parentId: menu.parentId,
         name: menu.name,
+        label: menu.name,
         code: menu.code,
         children: []
       };

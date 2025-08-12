@@ -65,7 +65,7 @@ export default function ({ crudExpose, context }) {
             component: { disabled: true }
           }
         },
-        policys: { // 插槽渲染
+        policies: { // 插槽渲染
           title: "权限",
           search: { show: false },
           column: { show: false },

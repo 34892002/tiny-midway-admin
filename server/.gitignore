@@ -12,4 +12,5 @@ run/
 .tsbuildinfo
 .tsbuildinfo.*
 download/*
-prisma/dev.db
+prisma/*.db
+prisma/*.db-journal

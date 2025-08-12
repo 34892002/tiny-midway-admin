@@ -2,6 +2,7 @@ import { Provide, Inject } from '@midwayjs/core';
 import { PrismaClient, Prisma, File } from '@prisma/client';
 import { unlinkSync } from 'fs';
 import { join } from 'path';
+import { AdminBusinessError, BusinessErrors, SystemErrors } from '../../../error/admin.error';
 
 @Provide()
 export class FileService {
@@ -59,7 +60,7 @@ export class FileService {
       });
       return res;
     } catch (error) {
-      if (error.code === 'P2002') throw new Error('已存在的分类名称');
+      if (error.code === 'P2002') throw new AdminBusinessError(BusinessErrors.CATEGORY_NAME_EXISTS);
       throw error;
     }
 
@@ -68,15 +69,15 @@ export class FileService {
   async delType(id: number) {
     try {
       const isSystem = await this.prisma.fileCategory.findUnique({ where: { id } }).then(res => res?.system);
-      if (isSystem) throw new Error('系统分类不能删除');
+      if (isSystem) throw new AdminBusinessError(SystemErrors.SYSTEM_CATEGORY_DELETE_FORBIDDEN_FILE);
       const count = await this.prisma.file.count({ where: { categoryId: id } });
-      if (count > 0) throw new Error('该分类下还有文件，请先删除该分类下的所有文件');
+      if (count > 0) throw new AdminBusinessError(SystemErrors.CATEGORY_HAS_FILES);
       const res = await this.prisma.fileCategory.delete(
         { where: {id, system: false} }
       )
       return res;
     } catch (error) {
-      if (error.code === 'P2025') throw new Error('不能删除系统分类');
+      if (error.code === 'P2025') throw new AdminBusinessError(BusinessErrors.SYSTEM_CATEGORY_DELETE_FORBIDDEN);
       throw error;
     }
   }

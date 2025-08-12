@@ -2,8 +2,15 @@ import { Provide, Scope, ScopeEnum, Config, Init, Inject } from '@midwayjs/core'
 import { PrismaAdapter } from 'casbin-prisma-adapter';
 import * as casbin from 'casbin';
 import { PrismaClient } from '@prisma/client';
+import { AdminBusinessError, BusinessErrors } from '../../../error/admin.error';
 
 type GetListTypeString = 'role' | 'policy';
+
+export interface IncrementalUpdateResult {
+  added: number;
+  removed: number;
+  unchanged: number;
+}
 
 export enum RuleAction {
   READ = 'read',
@@ -52,7 +59,6 @@ export class CasbinService {
   @Config('casbin')
   casbinCfg;
 
-  // TODO: 调用一次savePolicy，数据库的策略表会全部删除再插入一遍，真的难绷，少用慎用。
   enforcer: casbin.Enforcer;
 
   @Init()
@@ -115,7 +121,8 @@ export class CasbinService {
       }
     });
     if (name) {
-      return result.find(item => item.role === name).codes;
+      const found = result.find(item => item.role === name);
+      return found ? found.codes : undefined;
     }
     return result;
   }
@@ -133,18 +140,19 @@ export class CasbinService {
       }
     });
     if (name) {
-      return result.find(item => item.user === name).roles;
+      const found = result.find(item => item.user === name);
+      return found ? found.roles : undefined;
     }
     return result;
   }
 
   async addAdminPolices(role: string, codes: string[], save: boolean = true) {
-    if (!role) return Promise.reject('角色不能为空');
+    if (!role) throw new AdminBusinessError(BusinessErrors.ROLE_IDENTIFIER_EMPTY);
     if (!codes.length) return true;
     const act = 'access'
     // 转换为 casbin 需要的格式
-    const policys = codes.map(code => [role, code, act]);
-    const res = await this.enforcer.addPolicies(policys);
+    const policies = codes.map(code => [role, code, act]);
+    const res = await this.enforcer.addPolicies(policies);
     if (save && res) {
       await this.enforcer.savePolicy();
     }
@@ -152,11 +160,11 @@ export class CasbinService {
   }
 
   async addAdminRole(username: string, roles: string[], save: boolean = true) {
-    if (!username) return Promise.reject('用户名不能为空');
+    if (!username) throw new AdminBusinessError(BusinessErrors.USER_IDENTIFIER_EMPTY);
     if (!roles.length) return true;
     // 转换为 casbin 需要的格式
-    const policys = roles.map(role => [username, role]);
-    const res = await this.enforcer.addGroupingPolicies(policys);
+    const policies = roles.map(role => [username, role]);
+    const res = await this.enforcer.addGroupingPolicies(policies);
     if (save && res) {
       await this.enforcer.savePolicy();
     }
@@ -164,11 +172,11 @@ export class CasbinService {
   }
 
   async removeAdminRole(username: string, roles: string[], save: boolean = true) {
-    if (!username) return Promise.reject('用户名不能为空');
+    if (!username) throw new AdminBusinessError(BusinessErrors.USER_IDENTIFIER_EMPTY);
     if (!roles.length) return true;
     // 转换为 casbin 需要的格式
-    const policys = roles.map(role => [username, role]);
-    const res = await this.enforcer.removeGroupingPolicies(policys);
+    const policies = roles.map(role => [username, role]);
+    const res = await this.enforcer.removeGroupingPolicies(policies);
     if (save && res) {
       await this.enforcer.savePolicy();
     }
@@ -176,12 +184,12 @@ export class CasbinService {
   }
 
   async removeAdminPolicy(role: string, codes: string[], save: boolean = true) {
-    if (!role) return Promise.reject('角色不能为空');
+    if (!role) throw new AdminBusinessError(BusinessErrors.ROLE_IDENTIFIER_EMPTY);
     if (!codes.length) return true;
     const act = 'access'
     // 转换为 casbin 需要的格式
-    const policys = codes.map(code => [role, code, act]);
-    const res = await this.enforcer.removePolicies(policys);
+    const policies = codes.map(code => [role, code, act]);
+    const res = await this.enforcer.removePolicies(policies);
     if (save && res) {
       await this.enforcer.savePolicy();
     }
@@ -200,8 +208,8 @@ export class CasbinService {
 
   async diffAdminPolicy(role: string, codes: string[]) {
     // 获取该角色所有的权限
-    const rolePolicys = await this.getAdminPlocy();
-    const curCodes = rolePolicys.find(item => item.role === role)?.codes || [];
+    const rolePolicies = await this.getAdminPlocy();
+    const curCodes = rolePolicies.find(item => item.role === role)?.codes || [];
     // 获取需要增加和删除的权限
     const addCodes = codes.filter(item => !curCodes.includes(item));
     const removeCodes = curCodes.filter(item => !codes.includes(item));
@@ -241,40 +249,14 @@ export class CasbinService {
     }
   }
 
-  async syncAdminDBRules(
-    ptype: string,
-    v0: string,
-    v1: string[],
-    v2: string = '',
-    client: Omit<PrismaClient, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends"> = this.prismaClient,
-  ) {
-    // 先清空该用户的所有角色
-    await client.casbinRule.deleteMany({
-      where: {
-        ptype,
-        v0,
-      },
-    });
-    // 然后插入新的角色
-    for (const obj of v1) {
-      const data = {
-        ptype,
-        v0,
-        v1: obj,
-      };
-      if (v2) data['v2'] = v2;
-      await client.casbinRule.create({
-        data,
-      });
-    }
-  }
+
 
   async clearDBRulesByV0(
     ptype: string,
     v0: string,
     client: Omit<PrismaClient, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends"> = this.prismaClient,
   ) {
-    if (!v0) return Promise.reject('name标识不能为空');
+    if (!v0) throw new AdminBusinessError(BusinessErrors.USER_IDENTIFIER_EMPTY);
     await client.casbinRule.deleteMany({
       where: {
         ptype,
@@ -293,13 +275,215 @@ export class CasbinService {
     // 假设 role-a = [read,write] role-b = [read,write]
     // 删除 delete p,read
     // 则 role-a = [read] role-b = [write]
-    // if (!code) throw new MidwayError('权限标识不能为空', '5002');
-    if (!v1) return Promise.reject('code标识不能为空');
+    // if (!code) throw new AdminBusinessError(BusinessErrors.PERMISSION_IDENTIFIER_EMPTY);
+    if (!v1) throw new AdminBusinessError(BusinessErrors.PERMISSION_IDENTIFIER_EMPTY);
     await client.casbinRule.deleteMany({
       where: {
         ptype,
         v1,
       },
     });
+  }
+
+  /**
+   * 批量删除权限规则
+   * 
+   * @param ptype 权限类型 ('p' 表示策略, 'g' 表示角色)
+   * @param v0 主体标识 (用户名或角色名)
+   * @param v1List 要删除的权限列表
+   * @param client Prisma客户端实例
+   * @returns 返回删除的记录数量
+   */
+  private async batchRemoveRules(
+    ptype: string,
+    v0: string,
+    v1List: string[],
+    client: any
+  ): Promise<number> {
+    if (!v1List.length) return 0;
+
+    try {
+      const deleteResult = await client.casbinRule.deleteMany({
+        where: {
+          ptype,
+          v0,
+          v1: { in: v1List }
+        }
+      });
+
+      return deleteResult.count;
+    } catch (error) {
+      throw new Error(`批量删除权限规则失败: ${error.message}`);
+    }
+  }
+
+  /**
+   * 批量添加权限规则
+   * 
+   * @param ptype 权限类型 ('p' 表示策略, 'g' 表示角色)
+   * @param v0 主体标识 (用户名或角色名)
+   * @param v1List 要添加的权限列表
+   * @param v2 权限操作类型 (如 'access')
+   * @param client Prisma客户端实例
+   * @returns 返回添加的记录数量
+   */
+  private async batchAddRules(
+    ptype: string,
+    v0: string,
+    v1List: string[],
+    v2: string,
+    client: any
+  ): Promise<number> {
+    if (!v1List.length) return 0;
+
+    try {
+      const createData = v1List.map(v1 => {
+        const data: any = { ptype, v0, v1 };
+        if (v2) data.v2 = v2;
+        return data;
+      });
+
+      const createResult = await client.casbinRule.createMany({
+        data: createData
+      });
+
+      return createResult.count;
+    } catch (error) {
+      throw new Error(`批量添加权限规则失败: ${error.message}`);
+    }
+  }
+
+  /**
+   * 增量更新权限规则 - 只添加和删除必要的权限记录
+   * 
+   * @param ptype 权限类型 ('p' 表示策略, 'g' 表示角色)
+   * @param v0 主体标识 (用户名或角色名)
+   * @param newV1List 新的权限列表
+   * @param v2 权限操作类型 (如 'access')
+   * @param client Prisma客户端实例
+   * @returns 返回操作结果统计
+   */
+  async syncAdminDBRulesIncremental(
+    ptype: string,
+    v0: string,
+    newV1List: string[],
+    v2: string = '',
+    client: any = this.prismaClient,
+  ): Promise<IncrementalUpdateResult> {
+    try {
+      // 参数验证
+      this.validateIncrementalUpdateParams(ptype, v0, newV1List, client);
+
+      // 检查是否已经在事务中（事务客户端没有$transaction方法）
+      const isInTransaction = !client.$transaction;
+
+      if (isInTransaction) {
+        // 已经在事务中，直接使用传入的客户端
+        return await this.executeIncrementalUpdate(ptype, v0, newV1List, v2, client);
+      } else {
+        // 不在事务中，创建新事务
+        return await client.$transaction(async (tx) => {
+          return await this.executeIncrementalUpdate(ptype, v0, newV1List, v2, tx);
+        });
+      }
+    } catch (error) {
+      throw new Error(`增量更新权限规则失败: ${error.message}`);
+    }
+  }
+
+  private async executeIncrementalUpdate(
+    ptype: string,
+    v0: string,
+    newV1List: string[],
+    v2: string,
+    tx: any
+  ): Promise<IncrementalUpdateResult> {
+    try {
+      // 1. 获取现有权限规则
+      const existingRules = await tx.casbinRule.findMany({
+        where: { ptype, v0 },
+        select: { v1: true }
+      });
+      const existingV1List = existingRules.map(rule => rule.v1);
+
+      // 2. 计算权限差异
+      const toAdd = newV1List.filter(v1 => !existingV1List.includes(v1));
+      const toRemove = existingV1List.filter(v1 => !newV1List.includes(v1));
+      const unchanged = existingV1List.filter(v1 => newV1List.includes(v1));
+
+      // 3. 边界情况处理 - 如果没有变化，直接返回
+      if (toAdd.length === 0 && toRemove.length === 0) {
+        return {
+          added: 0,
+          removed: 0,
+          unchanged: unchanged.length
+        };
+      }
+
+      // 4. 使用批量操作方法执行删除和添加
+      const removedCount = await this.batchRemoveRules(ptype, v0, toRemove, tx);
+      const addedCount = await this.batchAddRules(ptype, v0, toAdd, v2, tx);
+
+      // 返回操作结果统计
+      return {
+        added: addedCount,
+        removed: removedCount,
+        unchanged: unchanged.length
+      };
+    } catch (error) {
+      throw new Error(`事务执行失败: ${error.message}`);
+    }
+  }
+
+  /**
+   * 验证增量更新方法的参数
+   * 
+   * @param ptype 权限类型
+   * @param v0 主体标识
+   * @param newV1List 新的权限列表
+   * @param client Prisma客户端实例
+   */
+  private validateIncrementalUpdateParams(ptype: string, v0: string, newV1List: string[], client?: any): void {
+    // 客户端验证
+    if (client !== undefined && client !== null) {
+      if (typeof client !== 'object' || (!client.$transaction && !client.casbinRule)) {
+        throw new Error('client必须是有效的PrismaClient实例');
+      }
+    } else if (client === null || client === undefined) {
+      throw new Error('client参数不能为空');
+    }
+
+    // 基础参数验证
+    if (ptype === null || ptype === undefined || typeof ptype !== 'string' || ptype.trim() === '') {
+      throw new Error('ptype不能为空且必须是字符串');
+    }
+
+    if (v0 === null || v0 === undefined || typeof v0 !== 'string' || v0.trim() === '') {
+      throw new Error('v0不能为空且必须是字符串');
+    }
+
+    if (!Array.isArray(newV1List)) {
+      throw new Error('newV1List必须是数组');
+    }
+
+    // 权限类型验证
+    const validPtypes = ['p', 'g'];
+    if (!validPtypes.includes(ptype)) {
+      throw new Error(`ptype必须是以下值之一: ${validPtypes.join(', ')}`);
+    }
+
+    // 权限列表内容验证
+    for (let i = 0; i < newV1List.length; i++) {
+      const v1 = newV1List[i];
+      if (v1 === null || v1 === undefined || typeof v1 !== 'string' || v1.trim() === '') {
+        throw new Error(`newV1List[${i}]不能为空且必须是字符串`);
+      }
+    }
+
+    // 检查重复项
+    const uniqueV1List = [...new Set(newV1List)];
+    if (uniqueV1List.length !== newV1List.length) {
+      throw new Error('newV1List中不能包含重复项');
+    }
   }
 }

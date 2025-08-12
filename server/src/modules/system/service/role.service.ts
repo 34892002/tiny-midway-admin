@@ -1,10 +1,13 @@
 import { Provide, Inject } from '@midwayjs/core';
-import { PrismaClient } from '@prisma/client';
-import { MidwayError } from '@midwayjs/core';
+import { PrismaClient, Role } from '@prisma/client';
+import { AdminBusinessError, BusinessErrors, UserDataErrors } from '../../../error/admin.error';
 import { CasbinService } from '../../base/service/casbin.service';
+import { PermissionService } from './permission.service';
 import { Options } from '../../../core/crud_service';
-
-// type GetListTypeString = 'role' | 'policy';
+import { IdentifierValidator } from '../../../utils';
+import { PaginationUtil } from '../../../utils/pagination.util';
+import { PaginationResult } from '../types/pagination.types';
+import { CreateRoleDto, UpdateRoleDto, RoleDto } from '../dto/role.dto';
 import * as _ from 'lodash';
 
 @Provide()
@@ -13,91 +16,190 @@ export class RoleService {
   prisma: PrismaClient;
   @Inject()
   casbinService: CasbinService;
+  @Inject()
+  permissionService: PermissionService;
 
   /**
    * 重新加载Casbin策略
-   *
+   * @deprecated 请使用 PermissionService.updatePermissionsWithAutoReload 方法
+   * 此方法已被统一权限管理服务取代，将在未来版本中移除
    * @returns 返回布尔值，表示是否成功重新加载策略
    */
   async reload() {
-    await this.casbinService.enforcer.loadPolicy();
-    return true;
-  }
-  async checkCodeAndPolicys(code: string, policys: any[]) {
-    if (!code) throw new MidwayError('角色标识不能为空', '5002');
-    // 检查policys是否为空,成员是否为空
-    if (!policys?.length) throw new MidwayError('权限标识列表不能为空', '5002');
-    if (!policys.every(item => item)) throw new MidwayError('权限标识不能为空', '5002');
-    // 不能以数字开头，只能包含大小写英文字母、数字和下划线
-    const regex = /^(?!^\d)[a-zA-Z0-9_\:]+$/;
-    policys.forEach(item => {
-      if (!regex.test(item)) throw new MidwayError(`权限标识 ${item} 不符合规则`, '5002');
+    // 使用统一的权限管理服务进行策略重载
+    return await this.permissionService.updatePermissionsWithAutoReload(async () => {
+      return true;
     });
-    // 权限重复检查
-    if (policys.length !== new Set(policys).size) throw new MidwayError('权限标识不能重复', '5002');
+  }
+  /**
+   * 校验角色代码和权限标识的合法性
+   *
+   * @param code 角色代码
+   * @param policies 权限标识列表
+   * @throws AdminBusinessError 当校验失败时抛出相应错误
+   */
+  async checkCodeAndPolicies(code: string, policies: string[]) {
+    // 1. 基础数据校验
+    IdentifierValidator.validateRoleCodeAndPolicies(code, policies);
+
+    // 2. 业务逻辑校验（需要查询数据库）
+    await this.checkRolePolicyBusinessConflicts(policies);
+  }
+
+  /**
+   * 检查角色-权限业务冲突（需要查询数据库的校验）
+   * @param policies 权限标识列表
+   * @throws AdminBusinessError 当发现业务冲突时抛出错误
+   */
+  private async checkRolePolicyBusinessConflicts(policies: string[]) {
     // 权限不能跟角色重复
-    const _List = await this.casbinService.getAllRolesAndPlicysByDB('role')
-    const roleList = _List.map(item => item.role)
-    const nameList = _List.map(item => item.name)
-    policys.forEach(item => {
-      if (nameList.includes(item)) throw new MidwayError('权限标识不能跟用户标识重复', '5002');
-      if (roleList.includes(item)) throw new MidwayError('权限标识不能跟角色标识重复', '5002');
+    const _roleList = await this.casbinService.getAllRolesAndPlicysByDB('role') as Array<{ name: string; role: string }>;
+    const roleList = _roleList.map(item => item.role);
+    const nameList = _roleList.map(item => item.name);
+
+    policies.forEach((item: string) => {
+      if (nameList.includes(item)) {
+        throw new AdminBusinessError(BusinessErrors.PERMISSION_USER_CONFLICT);
+      }
+      if (roleList.includes(item)) {
+        throw new AdminBusinessError(BusinessErrors.PERMISSION_ROLE_CONFLICT);
+      }
     });
   }
-  public async findAll(where:any, options: Partial<Options>): Promise<{ records: any[]; total: number; currentPage: number; pageSize: number }> {
-    const { select, include, sort = { id: 'desc' }, page = 1, limit = 20 } = options;
-    const orderBy = typeof sort === 'string' ? JSON.parse(sort) : sort;
-    const skip = (Number(page) - 1) * Number(limit);
-    const take = Number(limit);
-    const [rows, count] = await Promise.all([
-      this.prisma.role.findMany({ where, select, include, orderBy, skip, take } as any),
-      this.prisma.role.count({ where }),
-    ]);
-    const policys = await this.casbinService.getAdminPlocy();
-    // 插入policys字段
-    rows.forEach(item => {
-      const curPolicy = policys.find(policy => policy.role === item.code);
-      if (curPolicy?.codes) item['policys'] = curPolicy.codes
+
+  /**
+   * 分页查询角色列表
+   * @param where 查询条件
+   * @param options 查询选项（包含分页、排序等参数）
+   * @returns 返回分页查询结果，包含角色列表、总数、当前页码和页面大小
+   */
+  public async findAll(where: Record<string, any>, options: Partial<Options>): Promise<PaginationResult<RoleDto>> {
+    const { select, include } = options;
+
+    // 使用 PaginationUtil 解析分页参数
+    const paginationOptions = PaginationUtil.parsePaginationQuery({
+      currentPage: options.page,
+      pageSize: options.limit,
+      sort: options.sort
     });
-    return { records: rows, total: count, currentPage: page, pageSize: limit };
-  }
-  async updateOne(id: number, _data: any) {
-    const role = await this.prisma.role.findUnique({ where: { id } });
-    if (role) {
-      // 系统内置账号不能修改系统属性
-      if (_data.system !== role.system) throw new MidwayError('用户不能修改系统属性', '5002');
-    }
-    const curPolicys = _data.policys;
-    const code = _data.code;
-    await this.checkCodeAndPolicys(code, curPolicys);
-    const create = _.pick(_data, ['name', 'code']);
-    // code唯一且不会被修改
-    const update = _.omit(_data, ['code', 'policys']);
-    try {
-      await this.prisma.$transaction(async client => {
-        await client.role.upsert({ where: { id }, update, create });
-        // 同步该用户的所有角色
-        await this.casbinService.syncAdminDBRules('p', code, curPolicys, 'access', client);
-      });
-    } catch (error) {
-      throw error;
-    } finally {
-      await this.reload();
+
+    // 构建数据库查询条件
+    const queryOptions = PaginationUtil.buildDatabaseQuery(where, paginationOptions);
+
+    // 构建查询参数，确保 select 和 include 不会同时使用
+    const findManyArgs: any = {
+      where: queryOptions.where,
+      orderBy: queryOptions.orderBy,
+      skip: queryOptions.skip,
+      take: queryOptions.take
+    };
+
+    // 优先使用 select，如果没有 select 才使用 include
+    if (select) {
+      findManyArgs.select = select;
+    } else if (include) {
+      findManyArgs.include = include;
     }
 
-    return true;
-  }
-  async deleteById(id: number) {
-    await this.prisma.$transaction(async client => {
-      const user = await client.role.findUnique({ where: { id }, select: { system: true } });
-      if (user.system) throw new MidwayError('系统角色不能删除', '5002');
-      const role = await client.role.delete({ where: { id } });
-      const roleName = role.code;
-      // 清空该角色的所有权限
-      await this.casbinService.clearDBRulesByV0('p', roleName, client);
-      // 删除所有用户关联的该角色
-      await this.casbinService.clearDBRulesByV1('g', roleName, client);
+    // 执行并行查询：获取数据和总数
+    const [rows, count] = await Promise.all([
+      this.prisma.role.findMany(findManyArgs),
+      this.prisma.role.count({ where: queryOptions.where }),
+    ]);
+
+    // 获取所有角色权限信息
+    const policies = await this.casbinService.getAdminPlocy();
+
+    // 插入policies字段并转换为RoleDto类型
+    const roleDtos: RoleDto[] = rows.map((item: Role) => {
+      const curPolicies = policies.find((policy: { role: string; codes: string[] }) => policy.role === item.code);
+      return {
+        ...item,
+        policies: curPolicies?.codes || []
+      } as RoleDto;
     });
-    return await this.reload();
+
+    // 使用 PaginationUtil 构建分页结果
+    return PaginationUtil.buildPaginationResult(roleDtos, count, paginationOptions);
+  }
+
+  /**
+   * 创建新角色
+   * @param data 角色数据（包含角色信息和权限列表）
+   * @returns 创建成功返回true
+   * @throws AdminBusinessError 当校验失败时抛出相应错误
+   */
+  async createOne(data: CreateRoleDto) {
+    const currentPolicies = data.policies;
+    const code = data.code;
+    await this.checkCodeAndPolicies(code, currentPolicies);
+    const create = _.pick(data, ['name', 'code']);
+    
+    // 使用权限服务的自动重载机制
+    return await this.permissionService.updatePermissionsWithAutoReload(async () => {
+      await this.prisma.$transaction(async (client) => {
+        await client.role.create({ data: create });
+        // 同步该角色的所有权限
+        await this.permissionService.syncRolePermissions(code, currentPolicies, client, { autoReload: false, transaction: true });
+      });
+      return true;
+    });
+  }
+
+  /**
+   * 更新角色信息
+   * @param id 角色ID
+   * @param data 角色数据（包含角色信息和权限列表）
+   * @returns 更新成功返回true
+   * @throws AdminBusinessError 当校验失败或角色不存在时抛出相应错误
+   */
+  async updateOne(id: number, data: UpdateRoleDto) {
+    const role = await this.prisma.role.findUnique({ where: { id } });
+    if (!role) {
+      throw new AdminBusinessError(UserDataErrors.ROLE_NOT_FOUND);
+    }
+    // 系统内置账号不能修改系统属性
+    if (data.system !== undefined && data.system !== role.system) {
+      throw new AdminBusinessError(BusinessErrors.SYSTEM_PROPERTY_MODIFY_FORBIDDEN);
+    }
+
+    const currentPolicies = data.policies;
+    const code = role.code; // 使用现有的code，不允许修改
+    await this.checkCodeAndPolicies(code, currentPolicies);
+
+    // code唯一且不会被修改，所以update中排除code
+    const update = _.omit(data, ['code', 'policies']);
+    
+    // 使用权限服务的自动重载机制
+    return await this.permissionService.updatePermissionsWithAutoReload(async () => {
+      await this.prisma.$transaction(async (client) => {
+        await client.role.update({ where: { id }, data: update });
+        // 同步该角色的所有权限
+        await this.permissionService.syncRolePermissions(code, currentPolicies, client, { autoReload: false, transaction: true });
+      });
+      return true;
+    });
+  }
+  /**
+   * 根据ID删除角色
+   * @param id 角色ID
+   * @returns 删除成功返回true
+   * @throws AdminBusinessError 当尝试删除系统角色时抛出错误
+   */
+  async deleteById(id: number) {
+    // 使用权限服务的自动重载机制
+    return await this.permissionService.updatePermissionsWithAutoReload(async () => {
+      await this.prisma.$transaction(async (client) => {
+        const role = await client.role.findUnique({ where: { id }, select: { system: true, code: true } });
+        if (role.system) {
+          throw new AdminBusinessError(BusinessErrors.SYSTEM_ROLE_DELETE_FORBIDDEN);
+        }
+        await client.role.delete({ where: { id } });
+        const roleName = role.code;
+        // 使用权限服务的清理方法，统一处理角色删除时的权限清理
+        await this.permissionService.cleanupRolePermissions(roleName, client);
+      });
+      return true;
+    });
   }
 }

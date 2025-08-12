@@ -15,10 +15,9 @@
     "pretty": true,
     "declaration": true,
     "forceConsistentCasingInFileNames": true,
-    "typeRoots": ["./typings", "./node_modules/@types"],
+    "typeRoots": ["./node_modules/@types", "./typings"],
     "outDir": "dist",
-    "rootDir": "src",
     "inlineSources": true,
   },
-  "exclude": ["*.js", "*.ts", "dist", "node_modules", "test", "prisma/**/*"]
+  "exclude": ["*.js", "dist", "node_modules"]
 }

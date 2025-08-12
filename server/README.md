@@ -27,3 +27,10 @@ $ npm start
 
 
 [midway]: https://midwayjs.org
+
+
+### 单元测试
+
+```bash
+npm test -- --testPathPattern=base --run  
+```
